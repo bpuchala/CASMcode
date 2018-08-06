@@ -25,7 +25,7 @@ install:
 script:
   - echo "script $TRAVIS_OS_NAME"
 
-jobs:
-  include:
-    - stage: deploy
-      script: echo "deploying from $TRAVIS_OS_NAME"
+# jobs:
+#   include:
+#     - stage: deploy
+#       script: echo "deploying from $TRAVIS_OS_NAME"
