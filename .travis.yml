@@ -26,14 +26,13 @@ matrix:
 install:
   - echo "install $TRAVIS_OS_NAME"
 
-script:
-  - echo "script $TRAVIS_OS_NAME"
+stages:
+  - test_it
+  - package_it
 
 jobs:
   include:
-    - stage: deploy
-      os: linux
-      script: echo "deploying from $TRAVIS_OS_NAME"
-    - stage: deploy
-      os: osx
-      script: echo "deploying from $TRAVIS_OS_NAME"
+    - stage: test_it
+      script: echo "test_it on $TRAVIS_OS_NAME"
+    - stage: package_it
+      script: echo "package_it on $TRAVIS_OS_NAME"
