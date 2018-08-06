@@ -33,13 +33,15 @@ jobs:
       os: linux
       install: echo "test_it install $TRAVIS_OS_NAME"
       script: echo "test_it script on $TRAVIS_OS_NAME"
-    - os: osx
+    - stage: test_it
+      os: osx
       install: echo "test_it install $TRAVIS_OS_NAME"
       script: echo "test_it script on $TRAVIS_OS_NAME"
     - stage: package_it
       os: linux
       install: echo "package_it install $TRAVIS_OS_NAME"
       script: echo "package_it script on $TRAVIS_OS_NAME"
-    - os: osx
+    - stage: package_it
+      os: osx
       install: echo "test_it install $TRAVIS_OS_NAME"
       script: echo "test_it script on $TRAVIS_OS_NAME"
