@@ -17,17 +17,18 @@ jobs:
             - bash-completion
             - curl
       install:
-        - echo "install_it on $TRAVIS_OS_NAME"
+        - echo "install on $TRAVIS_OS_NAME"
       script:
-        - echo "test_it on $TRAVIS_OS_NAME" && exit 1
+        - echo "script on $TRAVIS_OS_NAME"
     - stage: test_it
       os: osx
       compiler: clang
       install:
-        - echo "install_it on $TRAVIS_OS_NAME"
+        - echo "install on $TRAVIS_OS_NAME"
       script:
-        - echo "test_it on $TRAVIS_OS_NAME"
+        - echo "script on $TRAVIS_OS_NAME"
     - stage: package_it
+      if: repo IN (prisms-center/CASMcode, bpuchala/CASMcode) AND branch IN (0.3.X_stages)
       os: linux
       dist: trusty
       compiler: gcc
@@ -38,6 +39,7 @@ jobs:
             - curl
       script: echo "package_it on $TRAVIS_OS_NAME"
     - stage: package_it
+      if: repo IN (prisms-center/CASMcode, bpuchala/CASMcode) AND branch IN (0.3.X)
       os: osx
       compiler: clang
       script: echo "package_it on $TRAVIS_OS_NAME"
