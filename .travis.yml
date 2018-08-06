@@ -19,7 +19,7 @@ jobs:
       install:
         - echo "install_it on $TRAVIS_OS_NAME"
       script:
-        - echo "test_it on $TRAVIS_OS_NAME"
+        - echo "test_it on $TRAVIS_OS_NAME" && exit 1
     - stage: test_it
       os: osx
       compiler: clang
