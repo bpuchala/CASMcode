@@ -16,11 +16,17 @@ jobs:
           packages:
             - bash-completion
             - curl
-      script: echo "test_it on $TRAVIS_OS_NAME"
+      install:
+        - echo "install_it on $TRAVIS_OS_NAME"
+      script:
+        - echo "test_it on $TRAVIS_OS_NAME"
     - stage: test_it
       os: osx
       compiler: clang
-      script: echo "test_it on $TRAVIS_OS_NAME"
+      install:
+        - echo "install_it on $TRAVIS_OS_NAME"
+      script:
+        - echo "test_it on $TRAVIS_OS_NAME"
     - stage: package_it
       os: linux
       dist: trusty
