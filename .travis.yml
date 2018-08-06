@@ -20,7 +20,12 @@ matrix:
       compiler: clang
 
 install:
-  - bash $TRAVIS_BUILD_DIR/build_scripts/travis-install.sh
+  - echo "install $TRAVIS_OS_NAME"
 
 script:
-  - bash $TRAVIS_BUILD_DIR/build_scripts/travis-script.sh
+  - echo "script $TRAVIS_OS_NAME"
+
+jobs:
+  include:
+    - stage: deploy
+      script: echo "deploying from $TRAVIS_OS_NAME"
