@@ -14,12 +14,12 @@ jobs:
       addons:
         apt:
           packages:
-          - bash-completion
-          - curl
+            - bash-completion
+            - curl
       script: echo "test_it on $TRAVIS_OS_NAME"
     - stage: test_it
       os: osx
-        compiler: clang
+      compiler: clang
       script: echo "test_it on $TRAVIS_OS_NAME"
     - stage: package_it
       os: linux
@@ -28,10 +28,10 @@ jobs:
       addons:
         apt:
           packages:
-          - bash-completion
-          - curl
+            - bash-completion
+            - curl
       script: echo "package_it on $TRAVIS_OS_NAME"
     - stage: package_it
       os: osx
-        compiler: clang
+      compiler: clang
       script: echo "package_it on $TRAVIS_OS_NAME"
