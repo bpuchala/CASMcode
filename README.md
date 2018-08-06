@@ -1,4 +1,4 @@
-## CASM: A Clusters Approach to Statistical Mechanics
+## CASM: A Clusters Approach to Statistical Mechanics - insignificant change 3
 
 
 CASM [(https://github.com/prisms-center/CASMcode)](https://github.com/prisms-center/CASMcode) is an open source software package designed to perform first-principles statistical mechanical studies of multi-component crystalline solids. CASM interfaces with first-principles electronic structure codes, automates the construction and parameterization of effective Hamiltonians and subsequently builds highly optimized (kinetic) Monte Carlo codes to predict finite-temperature thermodynamic and kinetic properties. CASM uses group theoretic techniques that take full advantage of crystal symmetry in order to rigorously construct effective Hamiltonians for almost arbitrary degrees of freedom in crystalline solids. This includes cluster expansions for configurational disorder in multi-component solids and lattice-dynamical effective Hamiltonians for vibrational degrees of freedom involved in structural phase transitions.
@@ -6,14 +6,14 @@ CASM [(https://github.com/prisms-center/CASMcode)](https://github.com/prisms-cen
 This version of CASM supports:
 
 - Constructing, fitting, and evaluating cluster expansion effective Hamiltonians with:
-  - Occupational degrees of freedom. 
+  - Occupational degrees of freedom.
 - High-throughput calculations using:
   - VASP: [https://www.vasp.at](https://www.vasp.at)  
 - Semi-Grand canonical Monte Carlo calculations
 
 CASM is updated frequently with support for new effective Hamiltonians, new interfaces for first-principles electronic structure codes, and new Monte Carlo methods. Collaboration is welcome and new features can be incorporated by forking the repository on GitHub, creating a new feature, and submitting pull requests. If you are interested in developing features that involve a significant time investment we encourage you to first contact the CASM development team at <casm-developers@lists.engr.ucsb.edu>.
 
-CASM is currently beta software with very active development. Our goal is that the ``casm`` program interface, including file input and output formats, is mostly stable and backwards compatiblity will be taken into account as new features are added (though some breaking changes may occur as we learn from experience). The CASM library ``libcasm`` is much less stable and we anticipate significant changes will be incorporated in the near future. 
+CASM is currently beta software with very active development. Our goal is that the ``casm`` program interface, including file input and output formats, is mostly stable and backwards compatiblity will be taken into account as new features are added (though some breaking changes may occur as we learn from experience). The CASM library ``libcasm`` is much less stable and we anticipate significant changes will be incorporated in the near future.
 
 #### Citing CASM
 
@@ -31,9 +31,9 @@ As an example, CASM can be acknowledged in a publication with:
 
 #### Citing Algorithms
 
-CASM utilizes a wide variety of algorithms, many of which were developed by the CASM development team, and some of which have yet to be published. Please cite CASM [ref1] if you implement a particular algorithm from CASM in other software. 
+CASM utilizes a wide variety of algorithms, many of which were developed by the CASM development team, and some of which have yet to be published. Please cite CASM [ref1] if you implement a particular algorithm from CASM in other software.
 
-CASM also relies on algorithms and methods that have been published in the literature. The cluster expansion for configurational degrees of freedom was rigorously formalized by Sanchez *et al.* [ref5, ref6]. The anharmonic potential cluster expansion as implemented in CASM was developed by Thomas *et al.* [ref2]. The local cluster expansion for diffusion barriers was introduced by Van der Ven *et al.* [ref7]. 
+CASM also relies on algorithms and methods that have been published in the literature. The cluster expansion for configurational degrees of freedom was rigorously formalized by Sanchez *et al.* [ref5, ref6]. The anharmonic potential cluster expansion as implemented in CASM was developed by Thomas *et al.* [ref2]. The local cluster expansion for diffusion barriers was introduced by Van der Ven *et al.* [ref7].
 
 The algorithms in CASM that enumerate symmetrically distinct configurations rely on algebraic properties of principal ideal domains, which were brought to bear on the problem by Hart and Forcade [ref8]. The fitting of the interaction coefficients of a cluster expansion to first-principles data relies on a minimization of the cross-validation (CV) score, an approach introduced to cluster expansions by van de Walle *et al.* [ref9]. The approach of using a genetic algorithm to pick interaction coefficients that minimize the CV score was introduced by Hart *et al.* [ref10] while the depth first search approach is due to Puchala *et al.* [ref3]. The use of compressive sensing methods to parameterize a cluster expansion was introduced by Nelson *et al.* [ref11]. Convergence criteria for Monte Carlo sampling are due to van de Walle *et al.* [ref12]. Convex hulls are found using Qhull [ref13].
 
@@ -96,22 +96,17 @@ All that is needed to start a new project is a ``prim.json`` file describing the
 
     # create a new CASM project directory
     mkdir /path/to/my_casm_project
-    
+
     # cd into the CASM project directory
     cd /path/to/my_casm_project
-    
+
     # create the prim.json file
     # ... create /path/to/my_casm_project/prim.json ...
-    
+
     # initialize the new CASM project
     casm init
 
 
-After initializing a casm project: 
+After initializing a casm project:
 
 - ``casm`` generates code that is compiled and linked at runtime in order to evaluate effective Hamiltonians in a highly optimized manner. If you installed the CASM header files and libraries in a location that is not in your default search path you must specify where to find them. Often the default compilation options work well, but there are some cases when the c++ compiler, compiler flags, or shared object construction flags might need to be customized. You can inspect the current settings via ``casm settings -l`` and options to change them via ``casm settings --desc``.
-
-
-
-
-

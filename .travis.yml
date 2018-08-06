@@ -28,7 +28,7 @@ jobs:
       script:
         - echo "script on $TRAVIS_OS_NAME"
     - stage: package_it
-      if: repo IN (prisms-center/CASMcode, bpuchala/CASMcode) AND branch IN (0.3.X_stages)
+      if: repo IN (prisms-center/CASMcode, bpuchala/CASMcode) AND branch IN (0.3.X_stages) AND type = push
       os: linux
       dist: trusty
       compiler: gcc
