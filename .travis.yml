@@ -23,9 +23,6 @@ matrix:
     - os: osx
       compiler: clang
 
-install:
-  - echo "install $TRAVIS_OS_NAME"
-
 stages:
   - test_it
   - package_it
@@ -34,9 +31,15 @@ jobs:
   include:
     - stage: test_it
       os: linux
-      script: echo "test_it on $TRAVIS_OS_NAME"
+      install: echo "test_it install $TRAVIS_OS_NAME"
+      script: echo "test_it script on $TRAVIS_OS_NAME"
     - os: osx
+      install: echo "test_it install $TRAVIS_OS_NAME"
+      script: echo "test_it script on $TRAVIS_OS_NAME"
     - stage: package_it
       os: linux
-      script: echo "package_it on $TRAVIS_OS_NAME"
+      install: echo "package_it install $TRAVIS_OS_NAME"
+      script: echo "package_it script on $TRAVIS_OS_NAME"
     - os: osx
+      install: echo "test_it install $TRAVIS_OS_NAME"
+      script: echo "test_it script on $TRAVIS_OS_NAME"
