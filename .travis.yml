@@ -33,6 +33,10 @@ stages:
 jobs:
   include:
     - stage: test_it
+      os: linux
       script: echo "test_it on $TRAVIS_OS_NAME"
+    - os: osx
     - stage: package_it
+      os: linux
       script: echo "package_it on $TRAVIS_OS_NAME"
+    - os: osx
