@@ -14,13 +14,20 @@ check_var "CASM_PYTHON" "Python interpreter" ${PYTHON:-"python"}
 check_var "CASM_NCPU" "Compiler -j option" 2
 check_var "CASM_MAKE_OPTIONS" "Options to give 'make'" ""
 
-check_program "$CASM_PYTHON"
 check_program autoreconf
 check_program git
 check_program make
 check_program "$CASM_CC"
-check_program "$CASM_CXX"
+which $CASM_CC
+$CASM_CC --version
 
+check_program "$CASM_CXX"
+which $CASM_CXX
+$CASM_CXX --version
+
+check_program "$CASM_PYTHON"
+which $CASM_PYTHON
+$CASM_PYTHON --version
 
 ### CASM C++ build and test #######################
 cd $CASM_BUILD_DIR
