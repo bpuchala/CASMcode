@@ -23,7 +23,7 @@ build_conda_package () {
   BUILD_FLAGS+="-c defaults -c conda-forge -c prisms-center "
   BUILD_FLAGS+="--python $CASM_PYTHON_VERSION "
 
-  UPLOAD_FLAGS="--user $CASM_CONDA_ID_USER --label $CASM_CONDA_LABEL "
+  UPLOAD_FLAGS="--user $CASM_CONDA_ID_USER --label $CASM_CONDA_LABEL --skip-existing "
 
   LOCATION=$(conda build $BUILD_FLAGS $RECIPE_DIR --output)
   conda build $BUILD_FLAGS $RECIPE_DIR
