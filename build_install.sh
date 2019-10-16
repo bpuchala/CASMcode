@@ -16,8 +16,7 @@ check_var "CASM_CXXFLAGS" "Compiler flags" ""
 check_var "CASM_NCPU" "Compiler -j option" 2
 
 # set OS-dependent variable defaults
-#   only CASM_CONFIGFLAGS can't be overridden from this script
-. $CASM_BUILD_DIR/build_scripts/travis-variables-$CASM_OS_NAME.sh
+. $CASM_BUILD_DIR/build_scripts/variables-$CASM_OS_NAME.sh
 
 ### end variables ###
 

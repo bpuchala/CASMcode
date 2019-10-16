@@ -84,8 +84,8 @@ Options:
 - Set `CASM_CXXFLAGS` for compiler options. The default is:
   - `-O3 -Wall -fPIC --std=c++11 -DNDEBUG -Wno-deprecated-register -Wno-ignored-attributes -Wno-deprecated-declarations`
 - See other options in:
-  - For OSX: `build_scripts/travis-variables-osx`
-  - For Linux: `build_scripts/travis-variables-linux`
+  - For OSX: `build_scripts/variables-osx.sh`
+  - For Linux: `build_scripts/variables-linux.sh`
 
 To clean up build products:
 

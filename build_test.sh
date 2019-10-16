@@ -30,8 +30,7 @@ check_var "CASM_PYTEST_ARGS" "Arguments to pass to pytest" "test_casm"
 ### end variables ###
 
 # set OS-dependent variable defaults
-#   only CASM_CONFIGFLAGS can't be overridden from this script
-. $CASM_BUILD_DIR/build_scripts/travis-variables-$CASM_OS_NAME.sh
+. $CASM_BUILD_DIR/build_scripts/variables-$CASM_OS_NAME.sh
 
 # Set CASM_SKIP_MAKE to skip make
 if ! [ -n "$CASM_SKIP_MAKE" ]; then

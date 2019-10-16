@@ -30,7 +30,7 @@ export CASM_PREFIX=$CONDA_PREFIX
 ### Nothing past here should use conda
 
 # set OS-dependent variables
-. $CASM_BUILD_DIR/build_scripts/travis-variables-$CASM_OS_NAME.sh
+. $CASM_BUILD_DIR/build_scripts/variables-$CASM_OS_NAME.sh
 
 # make-check-cpp
 bash $CASM_BUILD_DIR/build_scripts/make-check-cpp.sh \
