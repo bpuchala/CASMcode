@@ -28,7 +28,7 @@ void RemoveT<_ConfigType>::erase(const DB::Selection<ConfigType> &selection,
                                  bool dry_run) {
   std::vector<std::string> fail;
   for (const auto &val : selection.data()) {
-    if (!has_existing_data_or_files(val.first)) {
+    if (!has_existing_properties_or_files(val.first)) {
       db_config<ConfigType>().erase(val.first);
     } else {
       log() << "skipping " << val.first << ": has existing data or files"

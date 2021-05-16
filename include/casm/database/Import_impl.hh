@@ -113,56 +113,37 @@ void ImportT<_ConfigType>::import(PathIterator begin, PathIterator end) {
   for (; it != end; ++it) {
     log << "Importing " << resolve_struc_path(it->string(), primclex())
         << std::endl;
-    ;
 
     std::vector<ConfigIO::Result> tvec;
 
     // Outputs one or more mapping results from the structure located at specied
     // path
-    //   See _import documentation for more.
     m_structure_mapper.map(resolve_struc_path(it->string(), primclex()),
                            required_properties, nullptr,
                            std::back_inserter(tvec));
     for (auto &res : tvec) {
-      // reasons to import data or not:
-      //
-      // could not map || no data || !m_import_data:
-      //   do not import
-      // !has_existing_data_or_files:
-      //   import
-      // has_existing_data_or_files:
-      //   new_data:
-      //     better_score:
-      //       import
-      //     !better_score:
-      //       do not import
-      //   !new_data:
-      //      better_score:
-      //        overwrite:
-      //          import
-      //        !overwrite:
-      //          do not import
-      //      !better_score:
-      //        do not import
-      // if could not map, no data, or do not import data, continue
-      if (!res.properties.to.empty() && res.has_data && settings().import) {
-        // std::cout << "res.properties.to: "  << res.properties.to << ";
-        // res.has_data: "
-        //<< res.has_data << " settings().import: " << settings.import << "\n";
-        // we will try to import data
+      // if could not map, store mapping result and continue
+      if (res.properties.to.empty()) {
+        results.push_back(res);
+        continue;
+      }
 
-        // note if preexisting data before this batch
-        auto p_it = preexisting.find(res.properties.to);
-        if (p_it == preexisting.end()) {
-          p_it = preexisting
-                     .emplace(res.properties.to,
-                              has_existing_data_or_files(res.properties.to))
-                     .first;
-        }
-        res.import_data.preexisting = p_it->second;
+      // note if preexisting data before this batch
+      auto p_it = preexisting.find(res.properties.to);
+      if (p_it == preexisting.end()) {
+        p_it = preexisting
+                   .emplace(res.properties.to,
+                            has_existing_properties_or_files(res.properties.to))
+                   .first;
+      }
+      res.import_data.preexisting_properties =
+          has_existing_properties(res.properties.to);
+      res.import_data.preexisting_files = has_existing_files(res.properties.to);
 
+      if (res.has_all_required_properties && settings().import_properties) {
         // insert properties
         db_props().insert(res.properties);
+        res.import_data.did_insert_properties = true;
       }
 
       results.push_back(res);
@@ -184,26 +165,32 @@ void ImportT<_ConfigType>::import(PathIterator begin, PathIterator end) {
 template <typename _ConfigType>
 void ImportT<_ConfigType>::_copy_files(
     std::vector<ConfigIO::Result> &results) const {
-  if (!settings().import ||
-      !(settings().copy_files || settings().additional_files))
+  if (!settings().copy_structure_files) {
     return;
+  }
 
   for (auto res : results) {
     std::string to_config = res.properties.to;
-    if (to_config.empty()) continue;
+    if (to_config.empty()) {
+      continue;
+    }
 
     auto db_it = db_props().find_via_to(to_config);
+    if (db_it == db_props().end()) {
+      continue;
+    }
+
     std::string origin = db_it->origin;
+    if (origin != res.properties.origin) {
+      continue;
+    }
 
-    if (origin != res.properties.origin) continue;
-
-    // note that this import to configuration is best in case of conflicts
-    res.import_data.is_best = true;
-
-    // if preexisting data, do not import new data unless overwrite option set
-    // if last_insert is not empty, it means the existing data was from this
-    // batch and we can overwrite
-    if (res.import_data.preexisting && !settings().overwrite) {
+    // if preexisting properties or files, do not import new data unless
+    // overwrite option set if last_insert is not empty, it means the existing
+    // data was from this batch and we can overwrite
+    if ((res.import_data.preexisting_properties ||
+         res.import_data.preexisting_files) &&
+        !settings().overwrite) {
       continue;
     }
 
@@ -212,7 +199,7 @@ void ImportT<_ConfigType>::_copy_files(
     //   there might be existing files in cases of import conflicts
     //   cp_files() will update res.properties.file_data
     rm_files(to_config, false);
-    this->cp_files(res, false, settings().additional_files);
+    this->cp_files(res, false, settings().copy_additional_files);
     db_props().insert(res.properties);
   }
 }
@@ -256,7 +243,7 @@ void ImportT<_ConfigType>::_import_report(
       ++(it->second);
 
       map_success.push_back(res);
-      if (res.has_data && settings().import &&
+      if (res.has_all_required_properties && settings().import_properties &&
           db_props().find_via_to(res.properties.to) != db_props().end() &&
           db_props().score(res.properties) <
               db_props().best_score(res.properties.to)) {
@@ -276,6 +263,9 @@ void ImportT<_ConfigType>::_import_report(
   // output a 'batch' file with paths to structures that could not be imported
   if (map_fail.size()) {
     fs::path p = fs::path(m_report_dir) / (prefix + "_fail");
+    if (settings().output_as_json) {
+      p += ".json";
+    }
     fs::ofstream sout(p);
 
     log() << "WARNING: Could not import " << map_fail.size() << " structures."
@@ -284,8 +274,15 @@ void ImportT<_ConfigType>::_import_report(
 
     DataFormatterDictionary<ConfigIO::Result> dict;
     dict.insert(ConfigIO::initial_path(), ConfigIO::fail_msg());
+
     auto formatter = dict.parse({"initial_path", "fail_msg"});
-    sout << formatter(map_fail.begin(), map_fail.end());
+    if (settings().output_as_json) {
+      jsonParser json;
+      json = formatter(map_fail.begin(), map_fail.end());
+      sout << json;
+    } else {
+      sout << formatter(map_fail.begin(), map_fail.end());
+    }
   }
 
   // - pos, config, score_method, import data?, import additional files?, score,
@@ -294,17 +291,29 @@ void ImportT<_ConfigType>::_import_report(
 
   if (map_success.size()) {
     fs::path p = fs::path(m_report_dir) / (prefix + "_success");
+    if (settings().output_as_json) {
+      p += ".json";
+    }
     fs::ofstream sout(p);
 
     log() << "Successfully imported " << map_success.size() << " structures."
           << std::endl;
     log() << "  See detailed report: " << p << std::endl << std::endl;
 
-    sout << formatter(map_success.begin(), map_success.end());
+    if (settings().output_as_json) {
+      jsonParser json;
+      json = formatter(map_success.begin(), map_success.end());
+      sout << json;
+    } else {
+      sout << formatter(map_success.begin(), map_success.end());
+    }
   }
 
   if (import_data_fail.size()) {
     fs::path p = fs::path(m_report_dir) / (prefix + "_data_fail");
+    if (settings().output_as_json) {
+      p += ".json";
+    }
     fs::ofstream sout(p);
 
     log() << "WARNING: Did not import data from " << import_data_fail.size()
@@ -316,11 +325,20 @@ void ImportT<_ConfigType>::_import_report(
           << std::endl;
     log() << "  See detailed report: " << p << std::endl << std::endl;
 
-    sout << formatter(import_data_fail.begin(), import_data_fail.end());
+    if (settings().output_as_json) {
+      jsonParser json;
+      json = formatter(import_data_fail.begin(), import_data_fail.end());
+      sout << json;
+    } else {
+      sout << formatter(import_data_fail.begin(), import_data_fail.end());
+    }
   }
 
   if (conflict.size()) {
     fs::path p = fs::path(m_report_dir) / (prefix + "_conflict");
+    if (settings().output_as_json) {
+      p += ".json";
+    }
     fs::ofstream sout(p);
 
     log()
@@ -337,7 +355,13 @@ void ImportT<_ConfigType>::_import_report(
         << std::endl;
     log() << "  See detailed report: " << p << std::endl << std::endl;
 
-    sout << formatter(conflict.begin(), conflict.end());
+    if (settings().output_as_json) {
+      jsonParser json;
+      json = formatter(conflict.begin(), conflict.end());
+      sout << json;
+    } else {
+      sout << formatter(conflict.begin(), conflict.end());
+    }
   }
 }
 

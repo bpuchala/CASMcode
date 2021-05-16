@@ -68,7 +68,7 @@ struct EraseScelConfigsBase {
       auto it = primclex.db<T>().scel_range(scelname).begin();
       auto end = primclex.db<T>().scel_range(scelname).end();
       for (; it != end; ++it) {
-        if (data.has_existing_data_or_files(it.name())) {
+        if (data.has_existing_properties_or_files(it.name())) {
           remaining++;
         }
       }

@@ -94,33 +94,43 @@ GenericDatumFormatter<std::string, ConfigIO::Result> to_configname() {
       "to_configname", "", [](const Result &res) { return res.properties.to; });
 }
 
-GenericDatumFormatter<bool, ConfigIO::Result> has_data() {
+GenericDatumFormatter<bool, ConfigIO::Result> has_all_required_properties() {
   return GenericDatumFormatter<bool, Result>(
-      "has_data", "", [](const Result &res) { return res.has_data; });
+      "has_all_required_properties", "",
+      [](const Result &res) { return res.has_all_required_properties; });
 }
 
-GenericDatumFormatter<bool, ConfigIO::Result> has_complete_data() {
+GenericDatumFormatter<bool, ConfigIO::Result> preexisting_properties() {
   return GenericDatumFormatter<bool, Result>(
-      "has_complete_data", "", [](const Result &res) { return res.has_data; });
-}
-
-GenericDatumFormatter<bool, ConfigIO::Result> preexisting_data() {
-  return GenericDatumFormatter<bool, Result>(
-      "preexisting_data", "",
-      [&](const Result &res) { return res.import_data.preexisting; });
-}
-
-GenericDatumFormatter<bool, ConfigIO::Result> import_data() {
-  return GenericDatumFormatter<bool, Result>(
-      "import_data", "", [&](const Result &res) {
-        return res.import_data.is_best;  // && it->second.import_data;
+      "preexisting_properties", "", [&](const Result &res) {
+        return res.import_data.preexisting_properties;
       });
 }
 
-GenericDatumFormatter<bool, ConfigIO::Result> import_additional_files() {
+GenericDatumFormatter<bool, ConfigIO::Result> preexisting_files() {
   return GenericDatumFormatter<bool, Result>(
-      "import_additional_files", "",
-      [&](const Result &res) { return res.import_data.copy_more; });
+      "preexisting_files", "",
+      [&](const Result &res) { return res.import_data.preexisting_files; });
+}
+
+GenericDatumFormatter<bool, ConfigIO::Result> did_insert_properties() {
+  return GenericDatumFormatter<bool, Result>(
+      "did_insert_properties", "",
+      [&](const Result &res) { return res.import_data.did_insert_properties; });
+}
+
+GenericDatumFormatter<bool, ConfigIO::Result> did_copy_structure_file() {
+  return GenericDatumFormatter<bool, Result>(
+      "did_copy_structure_file", "", [&](const Result &res) {
+        return res.import_data.did_copy_structure_file;
+      });
+}
+
+GenericDatumFormatter<bool, ConfigIO::Result> did_copy_additional_files() {
+  return GenericDatumFormatter<bool, Result>(
+      "did_copy_additional_files", "", [&](const Result &res) {
+        return res.import_data.did_copy_additional_files;
+      });
 }
 
 GenericDatumFormatter<double, ConfigIO::Result> lattice_deformation_cost() {
@@ -149,9 +159,7 @@ GenericDatumFormatter<double, ConfigIO::Result> energy() {
   return GenericDatumFormatter<double, Result>(
       "energy", "",
       [](const Result &res) { return res.properties.scalar("energy"); },
-      [](const Result &res) {
-        return res.properties.has_scalar("energy");
-      });
+      [](const Result &res) { return res.properties.has_scalar("energy"); });
 }
 
 GenericDatumFormatter<double, ConfigIO::Result> score(
@@ -159,7 +167,7 @@ GenericDatumFormatter<double, ConfigIO::Result> score(
   return GenericDatumFormatter<double, Result>(
       "score", "",
       [&](const Result &res) { return db_props.score(res.properties); },
-      [&](const Result &res) { return res.has_data; });
+      [&](const Result &res) { return res.has_all_required_properties; });
 }
 
 GenericDatumFormatter<double, ConfigIO::Result> best_score(
@@ -168,14 +176,17 @@ GenericDatumFormatter<double, ConfigIO::Result> best_score(
       "best_score", "",
       [&](const Result &res) { return db_props.best_score(res.properties.to); },
       [&](const Result &res) {
+        jsonParser json;
+        json["best_score"] = jsonParser::null();
+        std::cout << json << std::endl;
         return db_props.find_via_to(res.properties.to) != db_props.end();
       });
 }
 
-GenericDatumFormatter<bool, ConfigIO::Result> is_best(
-    PropertiesDatabase &db_props) {
+GenericDatumFormatter<bool, ConfigIO::Result>
+has_best_scoring_mapped_properties(PropertiesDatabase &db_props) {
   return GenericDatumFormatter<bool, Result>(
-      "is_best", "",
+      "has_best_scoring_mapped_properties", "",
       [&](const Result &res) {
         return res.properties.origin ==
                db_props.find_via_to(res.properties.to)->origin;
@@ -202,7 +213,9 @@ void default_import_formatters(DataFormatterDictionary<Result> &dict,
                                PropertiesDatabase &db_props) {
   default_update_formatters(dict, db_props);
 
-  dict.insert(preexisting_data(), import_data(), import_additional_files());
+  dict.insert(preexisting_properties(), preexisting_files(),
+              did_insert_properties(), did_copy_structure_file(),
+              did_copy_additional_files());
 }
 
 /// Insert default formatters to dictionary, for 'casm update'
@@ -210,10 +223,11 @@ void default_update_formatters(DataFormatterDictionary<Result> &dict,
                                PropertiesDatabase &db_props) {
   dict.insert(initial_path(), final_path(), fail_msg(),
               // configname(),
-              data_origin(), to_configname(), is_new_config(), has_data(),
-              has_complete_data(), lattice_deformation_cost(),
+              data_origin(), to_configname(), is_new_config(),
+              has_all_required_properties(), lattice_deformation_cost(),
               atomic_deformation_cost(), energy(), score(db_props),
-              best_score(db_props), is_best(db_props), selected());
+              best_score(db_props),
+              has_best_scoring_mapped_properties(db_props), selected());
 }
 }  // namespace ConfigIO
 
@@ -254,13 +268,14 @@ bool ConfigData::has_existing_files(const std::string &to_configname) const {
 
 /// \brief Return true if there is data already associated with a particular
 /// configuration
-bool ConfigData::has_existing_data(const std::string &to_configname) const {
+bool ConfigData::has_existing_properties(
+    const std::string &to_configname) const {
   return db_props().find_via_to(to_configname) != db_props().end();
 }
 
-bool ConfigData::has_existing_data_or_files(
+bool ConfigData::has_existing_properties_or_files(
     const std::string &configname) const {
-  return has_existing_data(configname) || has_existing_files(configname);
+  return has_existing_properties(configname) || has_existing_files(configname);
 }
 
 /// Check if 'properties.calc.json' file has not changed since last read
@@ -306,8 +321,8 @@ void ConfigData::rm_files(const std::string &configname, bool dry_run) const {
 ///
 void ConfigData::cp_files(ConfigIO::Result &res, bool dry_run,
                           bool copy_additional_files) const {
-  res.import_data.copy_data = false;
-  res.import_data.copy_more = false;
+  res.import_data.did_copy_structure_file = false;
+  res.import_data.did_copy_additional_files = false;
 
   fs::path p = calc_dir(res.properties.to);
   if (!fs::exists(p)) {
@@ -316,28 +331,28 @@ void ConfigData::cp_files(ConfigIO::Result &res, bool dry_run,
     }
   }
 
-  fs::path origin_props_path = Local::_resolve_properties_path(
-      res.properties.file_data.path(), primclex());
-  if (origin_props_path.empty()) {
+  fs::path origin_struc_path =
+      resolve_struc_path(res.properties.file_data.path(), primclex());
+  if (origin_struc_path.empty()) {
     return;
   }
+  fs::path dest_struc_path = p / origin_struc_path.filename();
 
   log().custom(std::string("Copy calculation files: ") + res.properties.to);
   if (!copy_additional_files) {
-    log() << "cp " << origin_props_path << " " << p / "properties.calc.json"
-          << std::endl;
-    res.import_data.copy_data = true;
+    log() << "cp " << origin_struc_path << " " << dest_struc_path << std::endl;
+    res.import_data.did_copy_structure_file = true;
     if (!dry_run) {
-      fs::copy_file(origin_props_path, p / "properties.calc.json");
+      fs::copy_file(origin_struc_path, dest_struc_path);
     }
   } else {
     Index count =
-        recurs_cp_files(origin_props_path.remove_filename(), p, dry_run, log());
+        recurs_cp_files(origin_struc_path.remove_filename(), p, dry_run, log());
     if (count) {
-      res.import_data.copy_more = true;
+      res.import_data.did_copy_additional_files = true;
     }
   }
-  res.properties.file_data = FileData((p / "properties.calc.json").string());
+  res.properties.file_data = FileData(dest_struc_path.string());
   log() << std::endl;
   return;
 }

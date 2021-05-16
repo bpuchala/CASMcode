@@ -8,9 +8,9 @@ namespace CASM {
 namespace DB {
 
 jsonParser &to_json(ImportSettings const &_set, jsonParser &_json) {
-  _json["import"] = _set.import;
-  _json["copy_files"] = _set.copy_files;
-  _json["additional_files"] = _set.additional_files;
+  _json["import_properties"] = _set.import_properties;
+  _json["copy_structure_files"] = _set.copy_structure_files;
+  _json["copy_additional_files"] = _set.copy_additional_files;
   _json["overwrite"] = _set.overwrite;
   return _json;
 }
@@ -18,13 +18,14 @@ jsonParser &to_json(ImportSettings const &_set, jsonParser &_json) {
 jsonParser const &from_json(ImportSettings &_set, jsonParser const &_json) {
   _set.set_default();
 
-  if (_json.contains("import")) _set.import = _json["import"].get<bool>();
+  if (_json.contains("import_properties"))
+    _set.import_properties = _json["import_properties"].get<bool>();
 
-  if (_json.contains("copy_files"))
-    _set.copy_files = _json["copy_files"].get<bool>();
+  if (_json.contains("copy_structure_files"))
+    _set.copy_structure_files = _json["copy_structure_files"].get<bool>();
 
-  if (_json.contains("additional_files"))
-    _set.additional_files = _json["additional_files"].get<bool>();
+  if (_json.contains("copy_additional_files"))
+    _set.copy_additional_files = _json["copy_additional_files"].get<bool>();
 
   if (_json.contains("overwrite"))
     _set.overwrite = _json["overwrite"].get<bool>();

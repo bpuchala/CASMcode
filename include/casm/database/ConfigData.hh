@@ -40,33 +40,42 @@ namespace ConfigIO {
 /// Data structure for data import results
 struct ImportData {
   ImportData()
-      : preexisting(false),
-        copy_data(false),
-        copy_more(false),
-        is_best(false) {}
+      : preexisting_properties(false),
+        preexisting_files(false),
+        did_copy_structure_file(false),
+        did_copy_additional_files(false) {}
 
-  // base responsibility:
-  bool preexisting;
-  bool copy_data;
-  bool copy_more;
-  bool is_best;
+  // True if configuration structure maps to had properties in the database
+  // before the import began
+  bool preexisting_properties;
+
+  // True if configuration structure maps to had files before the import began
+  bool preexisting_files;
+
+  // True if the MappedProperties were inserted into the properties database
+  bool did_insert_properties;
+
+  // True if the structure file was copied into the training_data directory for
+  // the configuration it is mapped to
+  bool did_copy_structure_file;
+
+  // True if additional files were copied into the training_data directory for
+  // the configuration it is mapped to
+  bool did_copy_additional_files;
 };
 
 /// Data structure for mapping / import results
 struct Result {
-  Result() : has_data(false), has_complete_data(false), is_new_config(false) {}
+  Result() : has_all_required_properties(false), is_new_config(false) {}
 
   // Set 'to'/'from' as empty strings if no mapping possible
   MappedProperties properties;
 
-  // Path to properties.calc.json or POS file that was imported
+  // Path to structure file that was imported
   std::string pos_path;
 
-  // If a properties.calc.json file is found in standard locations
-  bool has_data;
-
   // If all PrimClex required properties exist
-  bool has_complete_data;
+  bool has_all_required_properties;
 
   // If 'to' Configuration did not exist in the database prior to mapping
   bool is_new_config;
@@ -76,6 +85,20 @@ struct Result {
 
   ImportData import_data;
 };
+
+// struct StructureMappingResults {
+//
+//   ConfigMapperResult config_mapping_result;
+//
+//   std::string fail_msg;
+//
+//   ConfigInsertResult config_insert_result;
+//
+// };
+//
+// struct ConfigurationMappingResults {
+//
+// };
 
 GenericDatumFormatter<std::string, Result> initial_path();
 
@@ -87,15 +110,17 @@ GenericDatumFormatter<std::string, Result> data_origin();
 
 GenericDatumFormatter<std::string, Result> to_configname();
 
-GenericDatumFormatter<bool, Result> has_data();
+GenericDatumFormatter<bool, Result> has_all_required_properties();
 
-GenericDatumFormatter<bool, Result> has_complete_data();
+GenericDatumFormatter<bool, Result> preexisting_properties();
 
-GenericDatumFormatter<bool, Result> preexisting_data();
+GenericDatumFormatter<bool, Result> preexisting_files();
 
-GenericDatumFormatter<bool, Result> import_data();
+GenericDatumFormatter<bool, Result> did_insert_properties();
 
-GenericDatumFormatter<bool, Result> import_additional_files();
+GenericDatumFormatter<bool, Result> did_copy_structure_file();
+
+GenericDatumFormatter<bool, Result> did_copy_additional_files();
 
 GenericDatumFormatter<double, Result> lattice_deformation_cost();
 
@@ -107,11 +132,13 @@ GenericDatumFormatter<double, Result> score();
 
 GenericDatumFormatter<double, Result> best_score();
 
-GenericDatumFormatter<bool, Result> is_best();
+GenericDatumFormatter<bool, Result> has_best_scoring_mapped_properties();
 
 GenericDatumFormatter<bool, Result> is_new_config();
 
 GenericDatumFormatter<bool, Result> selected();
+
+GenericDatumFormatter<bool, Result> mapped_properties();
 
 /// Insert default formatters to dictionary, for 'casm import'
 void default_import_formatters(DataFormatterDictionary<Result> &dict,
@@ -170,9 +197,9 @@ class ConfigData {
   /// \brief Return true if there are existing files in the traning_data
   /// directory
   ///        for a particular configuration
-  bool has_existing_data(const std::string &to_configname) const;
+  bool has_existing_properties(const std::string &to_configname) const;
 
-  bool has_existing_data_or_files(const std::string &to_configname) const;
+  bool has_existing_properties_or_files(const std::string &to_configname) const;
 
   /// Check if 'properties.calc.json' file has not changed since last read
   bool no_change(const std::string &configname) const;

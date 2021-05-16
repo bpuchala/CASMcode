@@ -125,8 +125,7 @@ StructureMap<Configuration>::map(
   // need to set Result data (w/ defaults):
   // - std::string pos = "";
   // - MappedProperties mapped_props {origin:"", to:"", unmapped:{}, mapped:{}};
-  // - bool has_data = false;
-  // - bool has_complete_data = false;
+  // - bool has_all_required_properties = false;
   // - bool is_new_config = false;
   // - std::string fail_msg = "";
   ConfigIO::Result res;
@@ -171,14 +170,12 @@ StructureMap<Configuration>::map(
       res.properties.init_config = hint_config->name();
     }
 
+    res.has_all_required_properties = true;
     for (std::string const &propname : req_properties) {
-      res.has_data = false;
-      res.has_complete_data = true;
-      if (res.properties.global.count(propname) ||
-          res.properties.site.count(propname)) {
-        res.has_data = true;
-      } else {
-        res.has_complete_data = false;
+      if (!res.properties.global.count(propname) &&
+          !res.properties.site.count(propname)) {
+        res.has_all_required_properties = false;
+        break;
       }
     }
 
@@ -429,7 +426,21 @@ int Import<Configuration>::run(const PrimClex &primclex,
   if (kwargs.contains("mapping")) from_json(map_settings, kwargs["mapping"]);
 
   ImportSettings import_settings;
-  if (kwargs.contains("data")) from_json(import_settings, kwargs["data"]);
+  {
+    jsonParser combined_json = jsonParser::object();
+    if (kwargs.contains("data")) {
+      combined_json = kwargs["data"];
+    }
+    auto const &vm = import_opt.vm();
+    if (vm.count("data")) {
+      combined_json["import_properties"] = true;
+    }
+    if (vm.count("copy-additional-files")) {
+      combined_json["copy_structure_files"] = true;
+      combined_json["copy_additional_files"] = true;
+    }
+    from_json(import_settings, combined_json);
+  }
 
   // get input report_dir, check if exists, and create new report_dir.i if
   // necessary
@@ -694,14 +705,15 @@ DataFormatter<ConfigIO::Result> Import<Configuration>::_import_formatter()
                                   "to_configname",
                                   "final_path",
                                   "is_new_config",
-                                  "has_data",
-                                  "has_complete_data",
-                                  "preexisting_data",
-                                  "import_data",
-                                  "import_additional_files",
+                                  "has_all_required_properties",
+                                  "preexisting_properties",
+                                  "preexisting_files",
+                                  "did_insert_properties",
+                                  "did_copy_structure_file",
+                                  "did_copy_additional_files",
                                   "score",
                                   "best_score",
-                                  "is_best",
+                                  "has_best_scoring_mapped_properties",
                                   "lattice_deformation_cost",
                                   "atomic_deformation_cost",
                                   "energy"};
@@ -714,8 +726,9 @@ DataFormatter<ConfigIO::Result> Import<Configuration>::_import_formatter()
 /// \brief Constructor
 Update<Configuration>::Update(const PrimClex &primclex,
                               const StructureMap<Configuration> &mapper,
+                              UpdateSettings const &_set,
                               std::string const &report_dir)
-    : UpdateT(primclex, mapper, report_dir) {}
+    : UpdateT(primclex, mapper, _set, report_dir) {}
 
 int Update<Configuration>::run(const PrimClex &primclex,
                                const jsonParser &kwargs,
@@ -733,6 +746,9 @@ int Update<Configuration>::run(const PrimClex &primclex,
     kwargs.get_else(force, "force", false);
   }
   used["force"] = force;
+
+  // TODO: this could take more settings, for now output_as_json fixed true
+  UpdateSettings update_settings;
 
   // 'mapping' subsettings are used to construct ConfigMapper and return 'used'
   // settings values still need to figure out how to specify this in general
@@ -762,7 +778,7 @@ int Update<Configuration>::run(const PrimClex &primclex,
   report_dir = create_report_dir(report_dir);
 
   // -- construct Update --
-  Update<Configuration> f(primclex, mapper, report_dir);
+  Update<Configuration> f(primclex, mapper, update_settings, report_dir);
 
   // -- read selection --
   DB::Selection<Configuration> sel(primclex, update_opt.selection_path());
@@ -782,11 +798,10 @@ DataFormatter<ConfigIO::Result> Update<Configuration>::_update_formatter()
   std::vector<std::string> col = {"data_origin",
                                   "selected",
                                   "to_configname",
-                                  "has_data",
-                                  "has_complete_data",
+                                  "has_all_required_properties",
                                   "score",
                                   "best_score",
-                                  "is_best",
+                                  "has_best_scoring_mapped_properties",
                                   "lattice_deformation_cost",
                                   "atomic_deformation_cost",
                                   "energy"};

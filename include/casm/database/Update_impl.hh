@@ -17,9 +17,11 @@ namespace DB {
 template <typename _ConfigType>
 UpdateT<_ConfigType>::UpdateT(const PrimClex &primclex,
                               const StructureMap<ConfigType> &mapper,
+                              UpdateSettings const &_set,
                               std::string report_dir)
     : ConfigData(primclex, TypeTag<ConfigType>()),
       m_structure_mapper(mapper),
+      m_set(_set),
       m_report_dir(report_dir) {}
 
 /// \brief Re-parse calculations 'from' all selected configurations
@@ -83,7 +85,7 @@ void UpdateT<_ConfigType>::update(const DB::Selection<ConfigType> &selection,
     for (auto &res : tvec) {
       results.push_back(res);
       // if mapped && has data, insert
-      if (!res.properties.to.empty() && res.has_data) {
+      if (!res.properties.to.empty() && res.has_all_required_properties) {
         // insert data:
         db_props().insert(res.properties);
       }
@@ -154,6 +156,9 @@ void UpdateT<_ConfigType>::_update_report(
 
   if (fail.size()) {
     fs::path p = fs::path(m_report_dir) / (prefix + "_fail");
+    if (settings().output_as_json) {
+      p += ".json";
+    }
     fs::ofstream sout(p);
 
     log() << "WARNING: Could not map " << fail.size() << " results."
@@ -165,50 +170,89 @@ void UpdateT<_ConfigType>::_update_report(
 
   if (success.size()) {
     fs::path p = fs::path(m_report_dir) / (prefix + "_success");
+    if (settings().output_as_json) {
+      p += ".json";
+    }
     fs::ofstream sout(p);
 
     log() << "Successfully mapped " << success.size() << " results."
           << std::endl;
     log() << "  See detailed report: " << p << std::endl << std::endl;
 
-    sout << formatter(success.begin(), success.end());
+    if (settings().output_as_json) {
+      jsonParser json;
+      json = formatter(success.begin(), success.end());
+      sout << json;
+    } else {
+      sout << formatter(success.begin(), success.end());
+    }
   }
 
   if (conflict.size()) {
     fs::path p = fs::path(m_report_dir) / (prefix + "_conflict");
+    if (settings().output_as_json) {
+      p += ".json";
+    }
     fs::ofstream sout(p);
 
     log() << "WARNING: Found " << conflict.size()
           << " conflicting relaxation results." << std::endl;
     log() << "  See detailed report: " << p << std::endl << std::endl;
 
-    sout << formatter(conflict.begin(), conflict.end());
+    if (settings().output_as_json) {
+      jsonParser json;
+      json = formatter(conflict.begin(), conflict.end());
+      sout << json;
+    } else {
+      sout << formatter(conflict.begin(), conflict.end());
+    }
   }
 
   if (unstable.size()) {
     fs::path p = fs::path(m_report_dir) / (prefix + "_unstable");
+    if (settings().output_as_json) {
+      p += ".json";
+    }
     fs::ofstream sout(p);
 
     log() << "WARNING: Found " << unstable.size() << " unstable relaxations."
           << std::endl;
     log() << "  See detailed report: " << p << std::endl << std::endl;
 
-    sout << formatter(unstable.begin(), unstable.end());
+    if (settings().output_as_json) {
+      jsonParser json;
+      json = formatter(unstable.begin(), unstable.end());
+      sout << json;
+    } else {
+      sout << formatter(unstable.begin(), unstable.end());
+    }
   }
 
   if (unselected.size()) {
     fs::path p = fs::path(m_report_dir) / (prefix + "_unselected");
+    if (settings().output_as_json) {
+      p += ".json";
+    }
     fs::ofstream sout(p);
 
     log() << "WARNING: Found " << unselected.size()
           << " unstable relaxations to unselected configurations." << std::endl;
     log() << "  See detailed report: " << p << std::endl << std::endl;
 
-    sout << formatter(unselected.begin(), unselected.end());
+    if (settings().output_as_json) {
+      jsonParser json;
+      json = formatter(unselected.begin(), unselected.end());
+      sout << json;
+    } else {
+      sout << formatter(unselected.begin(), unselected.end());
+    }
   }
 
   if (new_config.size()) {
     fs::path p = fs::path(m_report_dir) / (prefix + "_new");
+    if (settings().output_as_json) {
+      p += ".json";
+    }
     fs::ofstream sout(p);
 
     log() << "WARNING: Found " << new_config.size()
@@ -217,7 +261,13 @@ void UpdateT<_ConfigType>::_update_report(
           << std::endl;
     log() << "  See detailed report: " << p << std::endl << std::endl;
 
-    sout << formatter(unselected.begin(), unselected.end());
+    if (settings().output_as_json) {
+      jsonParser json;
+      json = formatter(unselected.begin(), unselected.end());
+      sout << json;
+    } else {
+      sout << formatter(unselected.begin(), unselected.end());
+    }
   }
 }
 
