@@ -30,6 +30,15 @@ class StrucMapper;
 
 namespace StrucMapping {
 
+/// Lattice filter function for structure mapping
+///
+/// The filter function is of the form
+/// `bool filter(parent_lattice, proposed_lattice)`, where parent_lattice is
+/// the primitive lattice of the parent structure, and proposed_lattice is a
+/// proposed superlattice of the parent structure
+typedef std::function<bool(Lattice const &, Lattice const &)>
+    LatticeFilterFunction;
+
 typedef std::vector<std::vector<Index>> PermuteOpVector;
 /// \brief Very large value used to denote invalid or impossible mapping
 inline double big_inf() { return 10E20; }
@@ -573,8 +582,7 @@ class StrucMapper {
   ///  bool filter(parent_lattice, proposed_lattice)
   /// where parent_lattice is the primitive lattice of the parent structure, and
   /// proposed_lattice is a proposed superlattice of the parent structure
-  void set_filter(
-      std::function<bool(Lattice const &, Lattice const &)> _filter_f) {
+  void set_filter(StrucMapping::LatticeFilterFunction _filter_f) {
     m_filtered = true;
     m_filter_f = _filter_f;
     m_superlat_map.clear();
@@ -768,7 +776,7 @@ class StrucMapper {
   ///       Use instead of sstruc.n_atom() for consistency
   Index _n_species(SimpleStructure const &sstruc) const;
 
-  // Implement filter as std::function<bool(Lattice const&,Lattice const&)>
+  // Check lattice filter function
   bool _filter_lat(Lattice const &_parent_lat,
                    Lattice const &_child_lat) const {
     return m_filter_f(_parent_lat, _child_lat);
@@ -794,7 +802,7 @@ class StrucMapper {
   bool m_symmetrize_atomic_cost;
 
   bool m_filtered;
-  std::function<bool(Lattice const &, Lattice const &)> m_filter_f;
+  StrucMapping::LatticeFilterFunction m_filter_f;
 
   /// Maps the supercell volume to a vector of Lattices with that volume
   mutable LatMapType m_superlat_map;

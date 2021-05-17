@@ -44,10 +44,11 @@ struct Settings {
            bool _strict = false, bool _robust = false,
            bool _primitive_only = false, bool _fix_volume = false,
            bool _fix_lattice = false, Index _k_best = 1,
-           std::vector<std::string> _forced_lattices = {},
-           std::string _filter = "", double _cost_tol = CASM::TOL,
-           double _min_va_frac = 0., double _max_va_frac = 0.5,
-           double _max_vol_change = 0.3)
+           std::vector<Lattice> _forced_lattices = {},
+           xtal::StrucMapping::LatticeFilterFunction _filter =
+               xtal::StrucMapping::LatticeFilterFunction(),
+           double _cost_tol = CASM::TOL, double _min_va_frac = 0.,
+           double _max_va_frac = 0.5, double _max_vol_change = 0.3)
       : lattice_weight(_lattice_weight),
         ideal(_ideal),
         strict(_strict),
@@ -108,11 +109,11 @@ struct Settings {
 
   /// List of superlattices of parent structure to consider when searching for
   /// mappings
-  std::vector<std::string> forced_lattices;
+  std::vector<Lattice> forced_lattices;
 
-  /// casm-query expression used to filter list of potential supercells of
-  /// parent structure to search over
-  std::string filter;
+  /// If provided, used to filter list of potential supercells of the parent
+  /// structure to search over
+  xtal::StrucMapping::LatticeFilterFunction filter;
 
   /// Tolerance used to determine if two mappings have identical cost
   double cost_tol;
@@ -285,18 +286,22 @@ class ConfigMapper {
   ///
   ///\param _tol tolerance for mapping comparisons (default is
   ///_pclex.crystallography_tol())
-  ConfigMapper(PrimClex const &_pclex, ConfigMapping::Settings const &_settings,
-               double _tol = -1.);
+  ConfigMapper(std::shared_ptr<Structure const> const &_shared_prim,
+               ConfigMapping::Settings const &_settings, double _tol);
 
-  const PrimClex &primclex() const { return *m_pclex; }
+  // const PrimClex &primclex() const { return *m_pclex; }
+
+  std::shared_ptr<Structure const> const &shared_prim() const {
+    return m_shared_prim;
+  }
 
   ConfigMapping::Settings const &settings() const { return m_settings; }
 
-  void set_primclex(const PrimClex &_pclex) { m_pclex = &_pclex; }
+  // void set_primclex(const PrimClex &_pclex) { m_pclex = &_pclex; }
 
   StrucMapper const &struc_mapper() const { return m_struc_mapper; }
 
-  void add_allowed_lattices(std::vector<std::string> const &_lattice_names);
+  // void add_allowed_lattices(std::vector<std::string> const &_lattice_names);
 
   void clear_allowed_lattices();
 
@@ -334,7 +339,8 @@ class ConfigMapper {
                                           "occ"}) const;
 
  private:
-  const PrimClex *m_pclex;
+  std::shared_ptr<Structure const> m_shared_prim;
+
   /// Maps the supercell volume to a vector of Lattices with that volume
   StrucMapper m_struc_mapper;
 

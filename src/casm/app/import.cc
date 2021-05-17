@@ -17,6 +17,10 @@ ImportOption::ImportOption() : OptionHandlerBase("import") {}
 
 const std::vector<fs::path> &ImportOption::pos_vec() const { return m_pos_vec; }
 
+const std::vector<fs::path> &ImportOption::structures_vec() const {
+  return m_structures_vec;
+}
+
 const fs::path &ImportOption::batch_path() const { return m_batch_path; }
 
 void ImportOption::initialize() {
@@ -28,25 +32,39 @@ void ImportOption::initialize() {
        po::value<std::vector<fs::path> >(&m_pos_vec)
            ->multitoken()
            ->value_name(ArgHandler::path()),
-       "Path(s) to structure(s) being imported (multiple allowed, but no "
-       "wild-card matching)")
+       "Same as --structures.")
 
-          ("batch,b",
-           po::value<fs::path>(&m_batch_path)->value_name(ArgHandler::path()),
-           "Path to batch file, which should list one structure file path per "
-           "line "
-           "(can be used in combination with --pos)")
+          ("structures",
+           po::value<std::vector<fs::path> >(&m_structures_vec)
+               ->multitoken()
+               ->value_name(ArgHandler::path()),
+           "Path(s) to structure(s) being imported (multiple allowed, but no "
+           "wild-card matching)")
 
-              ("data,d",
-               "Attempt to extract calculation data from the enclosing "
-               "directory of the structure files, if it is available")
+              ("batch,b",
+               po::value<fs::path>(&m_batch_path)
+                   ->value_name(ArgHandler::path()),
+               "Path to batch file, which should list one structure file path "
+               "per "
+               "line.")
 
-                  ("copy-additional-files",
-                   "Recursively copy other files from the same directory as "
-                   "the properties.calc.json file.");
+                  ("data,d", "Same as --properties.")
+
+                      ("properties",
+                       "If they exist, insert properties into the properties "
+                       "database.")
+
+                          ("copy-structure-files",
+                           "Copy structure files into the training_data "
+                           "directory");
+
+  ("copy-additional-files",
+   "Recursively copy other files from the same directory as "
+   "the structure file into the training_data directory.");
 
   add_configtype_suboption(traits<Configuration>::short_name,
                            DB::config_types_short());
+  add_selection_no_default_suboption();
   bool required = false;
   add_settings_suboption(required);
   add_input_suboption(required);
@@ -159,7 +177,12 @@ const std::string ImportCommand::name = "import";
 
 ImportCommand::ImportCommand(const CommandArgs &_args,
                              Completer::ImportOption &_opt)
-    : APICommand<Completer::ImportOption>(_args, _opt) {}
+    : APICommand<Completer::ImportOption>(_args, _opt) {
+  m_methods[traits<Configuration>::short_name] =
+      notstd::make_cloneable<ImportConfigurations>();
+  m_methods[traits<Configuration>::short_name] =
+      notstd::make_cloneable<ImportSupercells>();
+}
 
 ImportCommand::~ImportCommand() {}
 

@@ -309,17 +309,17 @@ PrimStrucMapCalculator::PrimStrucMapCalculator(
 
 //*******************************************************************************************
 
-void ConfigMapper::add_allowed_lattices(
-    std::vector<std::string> const &_lattice_names) {
-  for (std::string const &_name : _lattice_names) {
-    auto it = primclex().template db<Supercell>().find(_name);
-    if (it == primclex().template db<Supercell>().end())
-      throw std::runtime_error(
-          "Could not add mapping lattice constraint " + _name +
-          " because no supercell having that name exists in database.\n");
-    m_struc_mapper.add_allowed_lattice(it->lattice());
-  }
-}
+// void ConfigMapper::add_allowed_lattices(
+//     std::vector<std::string> const &_lattice_names) {
+//   for (std::string const &_name : _lattice_names) {
+//     auto it = primclex().template db<Supercell>().find(_name);
+//     if (it == primclex().template db<Supercell>().end())
+//       throw std::runtime_error(
+//           "Could not add mapping lattice constraint " + _name +
+//           " because no supercell having that name exists in database.\n");
+//     m_struc_mapper.add_allowed_lattice(it->lattice());
+//   }
+// }
 
 //*******************************************************************************************
 
@@ -329,40 +329,44 @@ void ConfigMapper::clear_allowed_lattices() {
 
 //*******************************************************************************************
 
-ConfigMapper::ConfigMapper(PrimClex const &_pclex,
+ConfigMapper::ConfigMapper(std::shared_ptr<Structure const> const &_shared_prim,
                            ConfigMapping::Settings const &_settings,
-                           double _tol /*=-1.*/)
-    : m_pclex(&_pclex),
+                           double _tol)
+    : m_shared_prim(_shared_prim),
       m_struc_mapper(
           PrimStrucMapCalculator(
-              _pclex.prim(), adapter::Adapter<xtal::SymOpVector, SymGroup>()(
-                                 _pclex.prim().factor_group())),
+              *shared_prim(), adapter::Adapter<xtal::SymOpVector, SymGroup>()(
+                                  shared_prim()->factor_group())),
           _settings.lattice_weight, _settings.max_vol_change,
-          _settings.options(), _tol > 0. ? _tol : _pclex.crystallography_tol(),
+          _settings.options(),
+          _tol > 0. ? _tol : shared_prim()->lattice().tol(),
           _settings.min_va_frac, _settings.max_va_frac),
       m_settings(_settings) {
-  if (!settings().filter.empty()) {
-    /// If a filter string is specified, construct the Supercell query filter
-    /// for restricting potential supercells for mapping
-    DataFormatter<Supercell> formatter =
-        _pclex.settings().query_handler<Supercell>().dict().parse(
-            settings().filter);
-    auto filter = [formatter, &_pclex](Lattice const &parent,
-                                       Lattice const &child) -> bool {
-      ValueDataStream<bool> check_stream;
-      check_stream << formatter(Supercell(&_pclex, parent));
-      return check_stream.value();
-    };
-
-    m_struc_mapper.set_filter(filter);
+  // if (!settings().filter.empty()) {
+  //   /// If a filter string is specified, construct the Supercell query filter
+  //   /// for restricting potential supercells for mapping
+  //   DataFormatter<Supercell> formatter =
+  //       _pclex.settings().query_handler<Supercell>().dict().parse(
+  //           settings().filter);
+  //   auto filter = [formatter, &_pclex](Lattice const &parent,
+  //                                      Lattice const &child) -> bool {
+  //     ValueDataStream<bool> check_stream;
+  //     check_stream << formatter(Supercell(&_pclex, parent));
+  //     return check_stream.value();
+  //   };
+  //
+  //   m_struc_mapper.set_filter(filter);
+  // }
+  if (settings().filter) {
+    m_struc_mapper.set_filter(settings().filter);
   }
 
-  for (std::string const &scel : settings().forced_lattices) {
-    auto it = _pclex.db<Supercell>().find(scel);
-    if (it == _pclex.db<Supercell>().end())
-      throw std::runtime_error("Cannot restrict mapping to lattice " + scel +
-                               ". Superlattice does not exist in project.");
-    m_struc_mapper.add_allowed_lattice(it->lattice());
+  for (Lattice const &lattice : settings().forced_lattices) {
+    // auto it = _pclex.db<Supercell>().find(scel);
+    // if (it == _pclex.db<Supercell>().end())
+    //   throw std::runtime_error("Cannot restrict mapping to lattice " + scel +
+    //                            ". Superlattice does not exist in project.");
+    m_struc_mapper.add_allowed_lattice(lattice);
   }
 }
 
@@ -463,7 +467,7 @@ ConfigMapperResult ConfigMapper::import_structure(
   // that supercells are managed
   for (auto const &map : struc_maps) {
     std::shared_ptr<Supercell> shared_scel = std::make_shared<Supercell>(
-        &primclex(), map.lattice_node.parent.superlattice());
+        shared_prim(), map.lattice_node.parent.superlattice());
     SimpleStructure resolved_struc =
         struc_mapper().calculator().resolve_setting(map, child_struc);
     std::pair<ConfigDoF, std::set<std::string> > tdof =

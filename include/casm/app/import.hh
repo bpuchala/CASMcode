@@ -2,6 +2,7 @@
 #define CASM_import
 
 #include "casm/app/APICommand.hh"
+#include "casm/app/import/ImportInterface.hh"
 #include "casm/completer/Handlers.hh"
 
 namespace CASM {
@@ -71,6 +72,8 @@ class ImportCommand : public APICommand<Completer::ImportOption> {
 
  private:
   mutable std::unique_ptr<ImportCommandImplBase> m_impl;
+
+  std::map<std::string, std::cloneable_ptr<ImportInterfaceBase>> m_methods;
 };
 
 }  // namespace CASM

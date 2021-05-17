@@ -10,11 +10,11 @@
 #include "casm/crystallography/SuperlatticeEnumerator.hh"
 #include "casm/crystallography/SymTools.hh"
 #include "casm/crystallography/io/VaspIO.hh"
-#include "casm/misc/CASM_Eigen_math.hh"
 #include "casm/external/Eigen/src/Core/Map.h"
 #include "casm/external/Eigen/src/Core/PermutationMatrix.h"
 #include "casm/external/Eigen/src/Core/util/Constants.h"
 #include "casm/external/Eigen/src/Core/util/Meta.h"
+#include "casm/misc/CASM_Eigen_math.hh"
 
 namespace CASM {
 namespace xtal {
@@ -409,9 +409,9 @@ StrucMapper::StrucMapper(
       m_cost_tol(max(1e-10, _cost_tol)),
       m_xtal_tol(TOL),
       m_lattice_transformation_range(1),
-      m_filtered(false),
       m_symmetrize_lattice_cost(false),
-      m_symmetrize_atomic_cost(false) {
+      m_symmetrize_atomic_cost(false),
+      m_filtered(false) {
   set_min_va_frac(_min_va_frac);
   set_max_va_frac(_max_va_frac);
 

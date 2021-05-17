@@ -1,6 +1,7 @@
 #include "casm/database/ConfigImport.hh"
 
 #include "casm/app/DirectoryStructure.hh"
+#include "casm/app/QueryHandler.hh"
 #include "casm/casm_io/dataformatter/DataFormatter_impl.hh"
 #include "casm/clex/ConfigMapping.hh"
 #include "casm/clex/Configuration_impl.hh"
@@ -100,10 +101,13 @@ ConfigMapping::Settings const &StructureMap<Configuration>::settings() const {
 /// Construct with PrimClex and ConfigMapping::Settings (see Import / Update
 /// desc)
 StructureMap<Configuration>::StructureMap(ConfigMapping::Settings const &_set,
-                                          const PrimClex &primclex) {
+                                          const PrimClex &primclex)
+    : m_primclex_ptr(&primclex) {
+  auto const &shared_prim = primclex.shared_prim();
+
   // -- construct ConfigMapper --
   m_configmapper.reset(
-      new ConfigMapper(primclex, _set, primclex.crystallography_tol()));
+      new ConfigMapper(shared_prim, _set, shared_prim->lattice().tol()));
 }
 
 /// \brief Specialized import method for ConfigType
@@ -155,6 +159,8 @@ StructureMap<Configuration>::map(
   }
 
   for (auto const &map : map_result.maps) {
+    map.second.config.supercell().set_primclex(m_primclex_ptr);
+
     // insert in database (note that this also/only inserts primitive)
     ConfigInsertResult insert_result =
         map.second.config.insert(settings().primitive_only);
@@ -238,161 +244,123 @@ const std::string Import<Configuration>::desc =
     "  'casm import' of Configuration proceeds in two steps: \n\n"
 
     "  1) For each file: \n"
-    "     - Read structure from VASP POSCAR type file or CASM "
-    "properties.calc.json \n"
-    "       file. \n"
+    "     - Read structure from VASP POSCAR type file or CASM \n"
+    "       properties.calc.json file. \n"
     "     - Map the structure onto a Configuration of the primitive crystal \n"
     "       structure. \n"
     "     - Record relaxation data (lattice & basis deformation cost). \n\n"
 
-    "  2) If data import is requested, iterate over each import record and do "
-    "\n"
-    "     the following:\n"
-    "     - If multiple imported structures map onto a configuration for which "
-    "\n"
-    "       there is no calculation data, import calculation data from the     "
-    "\n"
-    "       structure with the lowest \"conflict_score\".                      "
-    "\n"
-    "     - If one or more imported structures map onto a configuration for    "
-    "\n"
-    "       which calculation data already exist, do not import any new data   "
-    "\n"
-    "       unless the \"overwrite\" option is given, in which case data and   "
-    "\n"
-    "       files are imported if the \"conflict_score\" will be improved. \n"
-    "     - If data is imported, the corresponding properties.calc.json file "
-    "is\n"
-    "       copied into the directory of the mapped configuration. Optionally, "
-    "\n"
-    "       additional files in the directory of the imported structure file "
-    "may\n"
-    "       also be copied. \n"
-    "     - Reports are generated detailing the results of the import: \n"
-    "       - import_map_fail: Structures that could not be mapped onto the    "
-    " \n"
-    "         primitive crystal structure. \n"
-    "       - import_map_success: Configurations that were successfully mapped "
-    " \n"
-    "         and imported into the Configuration database (or already "
-    "existed).\n"
-    "       - import_data_fail: Structures with data that would be imported    "
-    " \n"
-    "         except preexisting data prevents it. \n"
-    "       - import_conflict: Configurations that were mapped to by multiple  "
-    " \n"
-    "         structures. \n\n"
+    "  2) If data import is requested, iterate over each import record and\n\n"
+    "     do the following:\n"
+    "     - If multiple imported structures map onto a configuration for  \n"
+    "       which there is no calculation data, import calculation data   \n"
+    "       from the structure with the lowest \"conflict_score\".        \n"
+    "     - If one or more imported structures map onto a configuration   \n"
+    "       for which calculation data already exist, do not import any   \n"
+    "       new data unless the \"overwrite\" option is given, in which   \n"
+    "       case data and files are imported if the \"conflict_score\"    \n"
+    "       will be improved.                                             \n"
+    "     - If data is imported, the corresponding properties.calc.json   \n"
+    "       file is copied into the directory of the mapped configuration.\n"
+    "       Optionally, additional files in the directory of the imported \n"
+    "       structure file may also be copied.                            \n"
+    "     - Reports are generated detailing the results of the import:    \n"
+    "       - import_map_fail: Structures that could not be mapped onto   \n"
+    "         the primitive crystal structure.                            \n"
+    "       - import_map_success: Configurations that were successfully   \n"
+    "         mapped and imported into the Configuration database (or     \n"
+    "         already existed).                                           \n"
+    "       - import_data_fail: Structures with data that would be        \n"
+    "         imported except preexisting data prevents it.               \n"
+    "       - import_conflict: Configurations that were mapped to by      \n"
+    "         multiple structures.                                        \n\n"
 
     "Settings: \n\n"
 
     "  mapping: JSON object (optional)\n"
-    "      A JSON object containing the following options controlling the "
-    "structure-\n"
-    "      mapping algorithm:\n"
+    "      A JSON object containing the following options controlling the \n"
+    "      structure-mapping algorithm:\n\n"
 
-    "    primitive_only: bool (optional, default=false)\n"
-    "        By convention, primitive configurations are always imported along "
-    "with \n"
-    "        non-primitive configurations. If false, only the primitive "
-    "configuration\n"
-    "        will be imported. Note: data from non-primitive configurations is "
-    "never\n"
-    "        used for primitive configurations.\n\n"
+    "    primitive_only: bool (default=false)\n"
+    "        By convention, primitive configurations are always imported  \n"
+    "        along with non-primitive configurations. If false, only the  \n"
+    "        primitive configuration will be imported. Note: data from    \n"
+    "        non-primitive configurations is never used for primitive     \n"
+    "        configurations.\n\n"
 
-    "    lattice_weight: number in range [0.0, 1.0] (optional, default=0.5) \n"
-    "        Candidate configurations are compared using \"deformation_cost\" "
-    "to \n"
-    "        determine the best mapping of the import structure to a           "
-    "  \n"
-    "        configuration. The \"lattice_weight\" determines the relative "
-    "weight\n"
-    "        of the \"lattice_deformation_cost\" and "
-    "\"atomic_deformation_cost\"  \n"
-    "        when calculating the total \"deformation_cost\". See _____ for    "
-    "  \n"
-    "        details. \n\n"
+    "    lattice_weight: number in range [0.0, 1.0] (default=0.5)\n"
+    "        Candidate configurations are compared using                  \n"
+    "        \"deformation_cost\" to determine the best mapping of the    \n"
+    "        import structure to a configuration. The \"lattice_weight\"  \n"
+    "        determines the relative weight of the                        \n"
+    "        \"lattice_deformation_cost\" and \"atomic_deformation_cost\" \n"
+    "        when calculating the total \"deformation_cost\".             \n\n"
 
-    "    max_vol_change: number (optional, default=0.3)\n"
-    "        Adjusts range of SCEL volumes searched while mapping imported \n"
-    "        structure onto ideal crystal (only necessary if the presence of \n"
-    "        vacancies makes the volume ambiguous). Default is +/- 30% of the "
-    "rounded\n"
-    "        integer volume (relaxed volume / primitive unit cell volume) of "
-    "the \n"
-    "        structure . Smaller values yield faster execution, larger values "
-    "may \n"
-    "        yield more accurate mapping.\n\n"
+    "    max_vol_change: number (default=0.3)\n"
+    "        Adjusts range of SCEL volumes searched while mapping imported\n"
+    "        structure onto ideal crystal (only necessary if the presence \n"
+    "        of vacancies makes the volume ambiguous). Default is +/- 30% \n"
+    "        of the rounded integer volume (relaxed volume / primitive    \n"
+    "        unit cell volume) of the structure. Smaller values yield     \n"
+    "        faster execution, larger values may yield more accurate      \n"
+    "        mapping.\n\n"
 
-    "    max_va_frac: number (optional, default=0.5)\n"
-    "        Places upper bound on the fraction of sites that are allowed to "
-    "be \n"
-    "        vacant after relaxed structure is mapped onto the ideal crystal. "
-    "\n"
-    "        Smaller values yield faster execution, larger values may yield "
-    "more \n"
-    "        accurate mapping. Has no effect if supercell volume can be "
-    "inferred \n"
-    "        from the number of atoms in the structure. Default value allows "
-    "up to \n"
-    "        50% of sites to be vacant.\n\n"
+    "    max_va_frac: number (default=0.5)\n"
+    "        Places upper bound on the fraction of sites that are allowed \n"
+    "        to be vacant after relaxed structure is mapped onto the ideal\n"
+    "        crystal. Smaller values yield faster execution, larger values\n"
+    "        may yield more accurate mapping. Has no effect if supercell  \n"
+    "        volume can be inferred from the number of atoms in the       \n"
+    "        structure. Default value allows up to 50% of sites to be     \n"
+    "        vacant.\n\n"
 
-    "    min_va_frac: number (optional, default=0.0)\n"
-    "        Places lower bound on the fraction of sites that are allowed to "
-    "be \n"
-    "        vacant after relaxed structure is mapped onto the ideal crystal. "
-    "\n"
-    "        Nonzero values may yield faster execution if updating "
-    "configurations \n"
-    "        that are known to have a large number of vacancies, at potential "
-    "\n"
-    "        sacrifice of mapping accuracy. Has no effect if supercell volume "
-    "can \n"
-    "        be inferred from the number of atoms in the structure. Default "
-    "value \n"
-    "        allows as few as 0% of sites to be vacant.\n\n"
+    "    min_va_frac: number (default=0.0)\n"
+    "        Places lower bound on the fraction of sites that are allowed \n"
+    "        to be vacant after relaxed structure is mapped onto the ideal\n"
+    "        crystal. Nonzero values may yield faster execution if        \n"
+    "        updating configurations that are known to have a large number\n"
+    "        of vacancies, at potential sacrifice of mapping accuracy. Has\n"
+    "        no effect if supercell volume can be inferred from the number\n"
+    "        of atoms in the structure. Default value allows as few as 0% \n"
+    "        of sites to be vacant.\n\n"
 
     "    ideal: bool (optional, default=false)\n"
-    "        Assume imported structures are in the setting of the ideal "
-    "crytal.\n"
-    "        This results in faster mapping, but may not identify the ideal "
-    "mapping.\n"
-    "        If large mapping costs are encountered, try re-running with ideal "
-    ": false\n\n"
+    "        Assume imported structures are in the setting of the ideal   \n"
+    "        crystal. This results in faster mapping, but may not identify\n"
+    "        the ideal mapping. If large mapping costs are encountered,   \n"
+    "        try re-running with ideal: false\n\n"
 
     "    robust: bool (optional, default=false)\n"
-    "        Perform additional checks to determine if mapping is degenerate "
-    "in cost\n"
-    "        to other mappings, which can occur if the imported structure has "
-    "symmetry\n"
-    "        that is incompatible with prim.json. Results in slower "
-    "execution.\n\n"
+    "        Perform additional checks to determine if mapping is         \n"
+    "        degenerate in cost to other mappings, which can occur if the \n"
+    "        imported structure has symmetry that is incompatible with    \n"
+    "        prim.json. Results in slower execution.\n\n"
 
     "    filter: string (optional) \n"
-    "        Restricts the import to only consider supercells that match a "
-    "provided\n"
-    "        casm query expression.\n\n"
+    "        Restricts the import to only consider supercells that match a\n"
+    "        provided casm supercell query expression.\n\n"
 
     "    forced_lattices: array of strings (optional) \n"
-    "        Restricts the import to only consider supercells provided via a "
-    "list of\n"
-    "        a list of their conventional names (i.e., "
-    "\"SCEL2_2_1_1_1_1_0\").\n\n"
+    "        Restricts the import to only consider supercells provided via\n"
+    "        a list of their conventional names (i.e.,                    \n"
+    "        \"SCEL2_2_1_1_1_1_0\").\n\n"
+
+    "    k_best: int (optional, default=1) \n"
+    "        Specify the number, k, of k-best mappings to include in the  \n"
+    "        solution set (default is 1).\n\n"
 
     "  data: JSON object (optional)\n"
-    "      A JSON object containing the following options controlling when "
-    "calculated \n"
-    "      properties are updated.\n\n"
+    "      A JSON object containing the following options controlling when\n"
+    "      calculated properties are updated.\n\n"
 
     "    import: bool (optional, default=false)\n"
-    "        If true (default), attempt to import calculation results. Results "
-    "are \n"
-    "        added from a \"properties.calc.json\" file which is checked for "
-    "in the\n"
-    "        following locations, relative to the input file path, 'pos': \n"
-
-    "        1) Is 'pos' a JSON file? If 'pos' ends in \".json\" or \".JSON\", "
-    "then\n"
-    "           it is assumed to be a 'properties.calc.json' file.\n"
+    "        If true (default), attempt to import calculation results.    \n"
+    "        Results are added from a \"properties.calc.json\" file which \n"
+    "        is checked for in the following locations, relative to the   \n"
+    "        input file path, 'pos':                                      \n"
+    "        1) Is 'pos' a JSON file? If 'pos' ends in \".json\" or       \n"
+    "           \".JSON\", then it is assumed to be a                     \n"
+    "           'properties.calc.json' file.                              \n"
     "        2) If / path / to / pos, checks for / path / to / "
     "calctype.current / properties.calc.json\n"
     "        3) If / path / to / pos, checks for / path / to / "
@@ -400,30 +368,68 @@ const std::string Import<Configuration>::desc =
 
     "        If false, only configuration structure is imported.\n\n"
 
-    "    additional_files: bool (optional, default = false)\n"
-    "        If true, attempt to copy all files & directories in the same "
-    "directory\n"
-    "        as the structure file or , if it exists, the properties.calc.json "
-    "file.\n"
-    "        Files & directories will only by copied if there are no existing "
-    "files\n"
-    "        or directories in the 'training_data' directory for the "
-    "configuration \n"
-    "        the structure as been mapped to or \"overwrite\"=true.\n\n"
+    "    additional_files: bool (optional, default = false)               \n"
+    "        If true, attempt to copy all files & directories in the same \n"
+    "        directory as the structure file or , if it exists, the       \n"
+    "        properties.calc.json file. Files & directories will only by  \n"
+    "        copied if there are no existing files or directories in the  \n"
+    "        'training_data' directory for the configuration the structure\n"
+    "        as been mapped to or \"overwrite\"=true.\n\n"
 
     "    overwrite: bool (optional, default=false)\n"
-    "        If true, data and files will be imported that overwrite existing\n"
-    "        data and files, if the score calculated by the "
-    "\"conflict_score\"\n"
-    "        for the configuration being mapped to will be improved.\n\n";
+    "        If true, data and files will be imported that overwrite      \n"
+    "        existing data and files, if the score calculated by the      \n"
+    "        \"conflict_score\" for the configuration being mapped to will\n"
+    "        be improved.\n\n"
+
+    "Deformation cost:\n"
+
+    "  The \"deformation_cost\" is:\n\n"
+
+    "      deformation_cost = w*lattice_deformation_cost + \n"
+    "                         (1.0-w)*atomic_deformation_cost,\n\n"
+
+    "  where \"w\" is the \"lattice_weight\" factor (default=0.5),\n\n"
+
+    "  the \"lattice_deformation_cost\" is the mean-square displacement of a \n"
+    "  points on the surface of a sphere of volume equal to the atomic volume\n"
+    "  when  it is deformed by the volume preserving deviatoric deformation \n"
+    "  matrix, F_deviatoric:\n\n"
+
+    "      V = relaxed_atomic_volume;\n"
+    "      F = deformation matrix (lattice_relaxed = F*lattice_ideal);\n"
+    "      F_deviatoric = F/pow(F.determinant(), 1./3.);\n"
+    "      I = 3x3 identity matrix;\n\n"
+
+    "      lattice_deformation_cost = pow( 3.*V / (4.*pi), 2.0/3.0) / 3.0 * \n"
+    "          (0.5 * (F.t * F / pow(std::abs(F.determinant()), 2.0/3.0) - "
+    "I)).squaredNorm()\n\n"
+
+    "  and the \"atomic_deformation_cost\" is a cost function for the amount "
+    "of\n"
+    "  basis site relaxation:\n\n"
+
+    "      D = 3xN matrix of basis site displacements (displacements are "
+    "applied \n"
+    "          before strain)\n"
+    "      Natoms = number of atoms in configuration\n"
+    "      atomic_deformation_cost = (F*D * D.transpose() * "
+    "F.transpose()).trace() \n"
+    "          / (max(Natoms, 1.))\n\n";
 
 int Import<Configuration>::run(const PrimClex &primclex,
                                const jsonParser &kwargs,
                                const Completer::ImportOption &import_opt) {
   // -- collect input settings --
 
+  std::shared_ptr<Structure const> shared_prim = primclex.shared_prim();
+  DataFormatterDictionary<Supercell> const &supercell_query_dict =
+      primclex.settings().query_handler<Supercell>().dict();
+
   ConfigMapping::Settings map_settings;
-  if (kwargs.contains("mapping")) from_json(map_settings, kwargs["mapping"]);
+  jsonParser mapping_json;
+  kwargs.get_else(mapping_json, "mapping", jsonParser());
+  from_json(map_settings, mapping_json, shared_prim, supercell_query_dict);
 
   ImportSettings import_settings;
   {
@@ -453,7 +459,7 @@ int Import<Configuration>::run(const PrimClex &primclex,
   StructureMap<Configuration> mapper(map_settings, primclex);
 
   jsonParser used_settings;
-  used_settings["mapping"] = mapper.settings();
+  used_settings["mapping"] = mapping_json;
   used_settings["data"] = import_settings;
 
   // -- print used settings --
@@ -510,153 +516,119 @@ const std::string Update<Configuration>::desc =
     "Settings: \n\n"
 
     "  mapping: JSON object (optional)\n"
-    "      A JSON object containing the following options controlling the "
-    "structure-\n"
-    "      mapping algorithm:\n"
+    "      A JSON object containing the following options controlling the \n"
+    "      structure-mapping algorithm:\n\n"
 
-    "    primitive_only: bool (optional, default=false)\n"
-    "        By convention, primitive configurations are always imported along "
-    "with \n"
-    "        non-primitive configurations. If false, only the primitive "
-    "configuration\n"
-    "        will be imported. Note: data from non-primitive configurations is "
-    "never\n"
-    "        used for primitive configurations.\n\n"
+    "    primitive_only: bool (default=false)\n"
+    "        By convention, primitive configurations are always imported  \n"
+    "        along with non-primitive configurations. If false, only the  \n"
+    "        primitive configuration will be imported. Note: data from    \n"
+    "        non-primitive configurations is never used for primitive     \n"
+    "        configurations.\n\n"
 
-    "    lattice_weight: number in range [0.0, 1.0] (optional, default=0.5) \n"
-    "        Candidate configurations are compared using \"deformation_cost\" "
-    "to \n"
-    "        determine the best mapping of the import structure to a           "
-    "  \n"
-    "        configuration. The \"lattice_weight\" determines the relative "
-    "weight\n"
-    "        of the \"lattice_deformation_cost\" and "
-    "\"atomic_deformation_cost\"  \n"
-    "        when calculating the total \"deformation_cost\". See _____ for    "
-    "  \n"
-    "        details. \n\n"
+    "    lattice_weight: number in range [0.0, 1.0] (default=0.5)\n"
+    "        Candidate configurations are compared using                  \n"
+    "        \"deformation_cost\" to determine the best mapping of the    \n"
+    "        import structure to a configuration. The \"lattice_weight\"  \n"
+    "        determines the relative weight of the                        \n"
+    "        \"lattice_deformation_cost\" and \"atomic_deformation_cost\" \n"
+    "        when calculating the total \"deformation_cost\".             \n\n"
 
-    "    max_vol_change: number (optional, default=0.3)\n"
-    "        Adjusts range of SCEL volumes searched while mapping imported \n"
-    "        structure onto ideal crystal (only necessary if the presence of \n"
-    "        vacancies makes the volume ambiguous). Default is +/- 30% of the "
-    "rounded\n"
-    "        integer volume (relaxed volume / primitive unit cell volume) of "
-    "the \n"
-    "        structure . Smaller values yield faster execution, larger values "
-    "may \n"
-    "        yield more accurate mapping.\n\n"
+    "    max_vol_change: number (default=0.3)\n"
+    "        Adjusts range of SCEL volumes searched while mapping imported\n"
+    "        structure onto ideal crystal (only necessary if the presence \n"
+    "        of vacancies makes the volume ambiguous). Default is +/- 30% \n"
+    "        of the rounded integer volume (relaxed volume / primitive    \n"
+    "        unit cell volume) of the structure. Smaller values yield     \n"
+    "        faster execution, larger values may yield more accurate      \n"
+    "        mapping.\n\n"
 
-    "    max_va_frac: number (optional, default=0.5)\n"
-    "        Places upper bound on the fraction of sites that are allowed to "
-    "be \n"
-    "        vacant after relaxed structure is mapped onto the ideal crystal. "
-    "\n"
-    "        Smaller values yield faster execution, larger values may yield "
-    "more \n"
-    "        accurate mapping. Has no effect if supercell volume can be "
-    "inferred \n"
-    "        from the number of atoms in the structure. Default value allows "
-    "up to \n"
-    "        50% of sites to be vacant.\n\n"
+    "    max_va_frac: number (default=0.5)\n"
+    "        Places upper bound on the fraction of sites that are allowed \n"
+    "        to be vacant after relaxed structure is mapped onto the ideal\n"
+    "        crystal. Smaller values yield faster execution, larger values\n"
+    "        may yield more accurate mapping. Has no effect if supercell  \n"
+    "        volume can be inferred from the number of atoms in the       \n"
+    "        structure. Default value allows up to 50% of sites to be     \n"
+    "        vacant.\n\n"
 
-    "    min_va_frac: number (optional, default=0.0)\n"
-    "        Places lower bound on the fraction of sites that are allowed to "
-    "be \n"
-    "        vacant after relaxed structure is mapped onto the ideal crystal. "
-    "\n"
-    "        Nonzero values may yield faster execution if updating "
-    "configurations \n"
-    "        that are known to have a large number of vacancies, at potential "
-    "\n"
-    "        sacrifice of mapping accuracy. Has no effect if supercell volume "
-    "can \n"
-    "        be inferred from the number of atoms in the structure. Default "
-    "value \n"
-    "        allows as few as 0% of sites to be vacant.\n\n"
+    "    min_va_frac: number (default=0.0)\n"
+    "        Places lower bound on the fraction of sites that are allowed \n"
+    "        to be vacant after relaxed structure is mapped onto the ideal\n"
+    "        crystal. Nonzero values may yield faster execution if        \n"
+    "        updating configurations that are known to have a large number\n"
+    "        of vacancies, at potential sacrifice of mapping accuracy. Has\n"
+    "        no effect if supercell volume can be inferred from the number\n"
+    "        of atoms in the structure. Default value allows as few as 0% \n"
+    "        of sites to be vacant.\n\n"
 
     "    ideal: bool (optional, default=false)\n"
-    "        Assume imported structures are in the setting of the ideal "
-    "crytal.\n"
-    "        This results in faster mapping, but may not identify the ideal "
-    "mapping.\n"
-    "        If large mapping costs are encountered, try re-running with ideal "
-    ": false\n\n"
-
-    "    fix_volume: bool (optional, default=false)\n"
-    "        Assume imported structures have the same integer volume as the "
-    "starting\n"
-    "        configuration. All supercells of this volume are considered for "
-    "mapping.\n"
-    "        This assumption may fail for systems that allow vacancies, when "
-    "vacancy\n"
-    "        concentration is high. Increases execution speed in these "
-    "cases.\n\n"
-
-    "    fix_lattice: bool (optional, default=false)\n"
-    "        Assume imported structures have the same lattice as the starting "
-    "configuration\n"
-    "        Only this supercell will be considered for mapping, but all "
-    "orientational\n"
-    "        relationships will still be considered. Increases execution "
-    "speed, especially\n"
-    "        at large supercell volume, but cannot detect relaxation to a "
-    "different supercell.\n\n"
+    "        Assume imported structures are in the setting of the ideal   \n"
+    "        crystal. This results in faster mapping, but may not identify\n"
+    "        the ideal mapping. If large mapping costs are encountered,   \n"
+    "        try re-running with ideal: false\n\n"
 
     "    robust: bool (optional, default=false)\n"
-    "        Perform additional checks to determine if mapping is degenerate "
-    "in cost\n"
-    "        to other mappings, which can occur if the imported structure has "
-    "symmetry\n"
-    "        that is incompatible with prim.json. Results in slower "
-    "execution.\n\n"
+    "        Perform additional checks to determine if mapping is         \n"
+    "        degenerate in cost to other mappings, which can occur if the \n"
+    "        imported structure has symmetry that is incompatible with    \n"
+    "        prim.json. Results in slower execution.\n\n"
 
-    "  data: JSON object (optional)\n"
-    "      A JSON object containing the following options controlling how "
-    "calculated \n"
-    "      properties are updated. After structural relaxation, a structural "
-    "that \n"
-    "      began as structure 'A' may map more closely onto a different "
-    "structure, 'B'\n"
-    "      In some cases, multiple structures may map onto the same 'B', and a "
-    "scoring\n"
-    "      metric is used to specify which set of calculation data is "
-    "associated with \n"
-    "      configuration 'B'. The following values determine the scoring "
-    "metric:\n\n"
+    "    filter: string (optional) \n"
+    "        Restricts the import to only consider supercells that match a\n"
+    "        provided casm supercell query expression.\n\n"
 
-    "    \"deformation_cost\":\n"
-    "       \"lattice_weight\": number, in range [0, 1.0]\n"
+    "    forced_lattices: array of strings (optional) \n"
+    "        Restricts the import to only consider supercells provided via\n"
+    "        a list of their conventional names (i.e.,                    \n"
+    "        \"SCEL2_2_1_1_1_1_0\").\n\n"
 
-    "       Uses a weighted sum of cost functions for lattice and basis \n"
-    "       deformation. See below for complete definition. Ex: \n"
-    "         {\"method\":\"deformation_cost\":, \"lattice_weight\":0.5} \n\n"
+    "    k_best: int (optional, default=1) \n"
+    "        Specify the number, k, of k-best mappings to include in the  \n"
+    "        solution set (default is 1).\n\n"
 
-    "    \"minimum\":\n"
-    "       \"property\": property name (ex: \"energy\")\n"
-
-    "       Reads the specified property from the mapped properties and\n"
-    "       selects the minimum to be the best mapping. Ex: \n"
-    "         {\"method\":\"minimum\":, \"property\": \"energy\"} \n\n"
-
-    "    \"maximum\":\n"
-    "       \"property\": property name (ex: \"energy\")\n"
-
-    "       Reads the specified property from the mapped properties and\n"
-    "       selects the maximum to be the best mapping. Ex: \n"
-    "         {\"method\":\"maximum\":, \"property\": \"energy\"} \n\n"
-
-    "    \"direct_selection\":\n"
-    "       \"name\": configname to force as 'best' (ex: "
-    "\"SCEL3_1_1_3_0_0_0/4\")\n"
-
-    "       Directly specify which configuration's properties should be used. "
-    "Ex: \n"
-    "         {\"method\":\"direct_selection\":, \"name\": "
-    "\"SCEL3_1_1_3_0_0_0/4\"} \n\n"
-
-    "  The default value used by CASM is:\n"
-    "    {\"method\": \"minimum\", \"property\": \"energy\"}\n\n"
+    // "  data: JSON object (optional)\n"
+    // "      A JSON object containing the following options controlling how \n"
+    // "      calculated properties are updated. After structural relaxation,\n"
+    // "      a structure that began as structure 'A' may map more closely   \n"
+    // "      onto a different structure, 'B' In some cases, multiple        \n"
+    // "      structures may map onto the same 'B', and a scoring metric is  \n"
+    // "      used to specify which set of calculation data is associated    \n"
+    // "      with configuration 'B'. The following values determine the     \n"
+    // "      scoring metric:\n\n"
+    //
+    // "    \"deformation_cost\":\n"
+    // "       \"lattice_weight\": number, in range [0, 1.0]\n"
+    //
+    // "       Uses a weighted sum of cost functions for lattice and basis \n"
+    // "       deformation. See below for complete definition. Ex: \n"
+    // "         {\"method\":\"deformation_cost\", \"lattice_weight\":0.5} \n\n"
+    //
+    // "    \"minimum\":\n"
+    // "       \"property\": property name (ex: \"energy\")\n"
+    //
+    // "       Reads the specified property from the mapped properties and\n"
+    // "       selects the minimum to be the best mapping. Ex: \n"
+    // "         {\"method\":\"minimum\", \"property\": \"energy\"} \n\n"
+    //
+    // "    \"maximum\":\n"
+    // "       \"property\": property name (ex: \"energy\")\n"
+    //
+    // "       Reads the specified property from the mapped properties and\n"
+    // "       selects the maximum to be the best mapping. Ex: \n"
+    // "         {\"method\":\"maximum\", \"property\": \"energy\"} \n\n"
+    //
+    // "    \"direct_selection\":\n"
+    // "       \"name\": configname to force as 'best' (ex: \n"
+    // "       \"SCEL3_1_1_3_0_0_0/4\")\n"
+    //
+    // "       Directly specify which configuration's properties should be used.
+    // " "Ex: \n" "         {                                     \n" "
+    // \"method\":\"direct_selection\",    \n" "           \"name\":
+    // \"SCEL3_1_1_3_0_0_0/4\"   \n" "         } \n\n"
+    //
+    // "  The default value used by CASM is:                                 \n"
+    // "    {\"method\": \"minimum\", \"property\": \"energy\"} \n\n"
 
     "Deformation cost:\n"
 
@@ -668,8 +640,7 @@ const std::string Update<Configuration>::desc =
     "  where \"w\" is the \"lattice_weight\" factor (default=0.5),\n\n"
 
     "  the \"lattice_deformation_cost\" is the mean-square displacement of a \n"
-    "  points on the surface of a sphere of volume equal to the atomic volume "
-    "\n"
+    "  points on the surface of a sphere of volume equal to the atomic volume\n"
     "  when  it is deformed by the volume preserving deviatoric deformation \n"
     "  matrix, F_deviatoric:\n\n"
 
@@ -738,6 +709,10 @@ int Update<Configuration>::run(const PrimClex &primclex,
   const po::variables_map &vm = update_opt.vm();
   jsonParser used;
 
+  std::shared_ptr<Structure const> shared_prim = primclex.shared_prim();
+  DataFormatterDictionary<Supercell> const &supercell_query_dict =
+      primclex.settings().query_handler<Supercell>().dict();
+
   // general settings
   bool force;
   if (vm.count("force")) {
@@ -752,14 +727,13 @@ int Update<Configuration>::run(const PrimClex &primclex,
 
   // 'mapping' subsettings are used to construct ConfigMapper and return 'used'
   // settings values still need to figure out how to specify this in general
-  jsonParser map_json;
-  kwargs.get_else(map_json, "mapping", jsonParser());
-  ConfigMapping::Settings map_settings =
-      map_json.get<ConfigMapping::Settings>();
-  map_settings.primitive_only = true;
+  ConfigMapping::Settings map_settings;
+  jsonParser mapping_json;
+  kwargs.get_else(mapping_json, "mapping", jsonParser());
+  from_json(map_settings, mapping_json, shared_prim, supercell_query_dict);
 
   StructureMap<Configuration> mapper(map_settings, primclex);
-  used["mapping"] = mapper.settings();
+  used["mapping"] = mapping_json;
 
   // 'data' subsettings
   // bool import_data = true;

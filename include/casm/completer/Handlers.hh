@@ -963,11 +963,14 @@ class ImportOption : public OptionHandlerBase {
   using OptionHandlerBase::configtype;
   using OptionHandlerBase::configtype_opts;
   using OptionHandlerBase::input_str;
+  using OptionHandlerBase::selection_path;
   using OptionHandlerBase::settings_path;
 
   ImportOption();
 
   const std::vector<fs::path> &pos_vec() const;
+
+  const std::vector<fs::path> &structures_vec() const;
 
   const fs::path &batch_path() const;
 
@@ -975,6 +978,8 @@ class ImportOption : public OptionHandlerBase {
   void initialize() override;
 
   std::vector<fs::path> m_pos_vec;
+
+  std::vector<fs::path> m_structures_vec;
 
   fs::path m_batch_path;
 };
