@@ -10,6 +10,8 @@
 #include "casm/clex/ConfigDoFTools.hh"
 #include "casm/clex/ConfigIsEquivalent.hh"
 #include "casm/clex/Configuration.hh"
+#include "casm/clex/MappedProperties.hh"
+#include "casm/clex/MappedPropertiesTools.hh"
 #include "casm/clex/ParamComposition.hh"
 #include "casm/clex/PrimClex.hh"
 #include "casm/clex/SimpleStructureTools.hh"
@@ -137,6 +139,37 @@ Index ConfigMapperResult::n_optimal(double tol /*=TOL*/) const {
     ++it;
   }
   return result;
+}
+
+/// Construct MappedProperties from a single ConfigMapper mapping result
+///
+/// \param _node MappingNode, from an element of ConfigMapperResult.map
+/// \param _individual_mapping_result ConfigMapperResult::Individual, from the
+/// same element of ConfigMapperResult.map as `_node`.
+///
+/// Note: Also adds the following scalar properties:
+/// - lattice_deformation_cost: The lattice mapping score, from
+/// xtal::LatticeNode::cost (`_node.lattice_node.cost`).
+/// - atomic_deformation_cost: The basis mapping score, from
+/// xtal::AssignmentNode::cost (`_node.atomic_node.cost`).
+/// - total_cost: Total mapping score, from xtal::MappingNode::cost
+/// (`_node.cost`). Depending on mapping method options may not be a linear
+/// combination of lattice_deformation_cost and atomic_deformation_cost.
+/// - This only sets the `site` and `global` members of MappedProperties
+///
+MappedProperties make_mapped_properties(
+    MappingNode const &_node,
+    ConfigMapperResult::Individual const &_individual_mapping_result) {
+  MappedProperties mapped_properties =
+      make_mapped_properties(_individual_mapping_result.resolved_struc,
+                             _individual_mapping_result.dof_managed_properties);
+
+  mapped_properties.scalar("lattice_deformation_cost") =
+      _node.lattice_node.cost;
+  mapped_properties.scalar("atomic_deformation_cost") = _node.atomic_node.cost;
+  mapped_properties.scalar("total_cost") = _node.cost;
+
+  return mapped_properties;
 }
 
 //*******************************************************************************************

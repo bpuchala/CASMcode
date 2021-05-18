@@ -1,5 +1,6 @@
 #include "casm/app/import/ImportInterface.hh"
 
+#include "casm/app/io/json_io.hh"
 #include "casm/casm_io/container/json_io.hh"
 #include "casm/casm_io/json/InputParser_impl.hh"
 #include "casm/completer/Handlers.hh"
@@ -38,26 +39,25 @@ jsonParser &to_json(const Completer::ImportOption &import_opt,
     json["data"]["copy_additional_files"] = true;
   }
   if (vm.count("batch")) {
-    json["batch"] = import_opt.batch_path();  // fs::path
+    json["batch"] = import_opt.batch_path().string();  // fs::path
   }
 
-  std::vector<fs::path> structures;
   if (vm.count("pos") || vm.count("structures")) {
+    json["structures"] = jsonParser::array();
+  }
+  if (vm.count("pos")) {
     for (fs::path const &path : import_opt.pos_vec()) {
-      structures.push_back(path);
+      json["structures"].push_back(path.string());
     }
   }
   if (vm.count("structures")) {
     for (fs::path const &path : import_opt.structures_vec()) {
-      structures.push_back(path);
+      json["structures"].push_back(path.string());
     }
-  }
-  if (vm.count("pos") || vm.count("structures")) {
-    json["structures"] = structures;  // vector<fs::path>
   }
 
   if (vm.count("selection")) {
-    json["selection"] = import_opt.selection_path();  // std::string
+    json["selection"] = import_opt.selection_path().string();  // std::string
   }
   return json;
 }

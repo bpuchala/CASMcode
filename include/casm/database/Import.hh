@@ -38,34 +38,31 @@ std::pair<OutputIterator, int> construct_pos_paths(
 ///    present), and the new properties are better scoring than existing
 ///    properties
 struct ImportSettings {
-  ImportSettings(bool _import_properties = false,
-                 bool _copy_structure_files = false,
-                 bool _copy_additional_files = false, bool _overwrite = false,
-                 bool _output_as_json = true)
-      : import_properties(_import_properties),
-        copy_structure_files(_copy_structure_files),
-        copy_additional_files(_copy_additional_files),
-        overwrite(_overwrite),
-        output_as_json(_output_as_json) {}
+  ImportSettings() {}
 
-  void set_default() { *this = ImportSettings(); }
+  /// Import mapped structures into the configuration database
+  bool import_configurations = true;
 
-  // Import properties into database, else just insert
-  // configurations w/out properties
-  bool import_properties;
+  /// If true, only import the primitive configuration.
+  bool primitive_only = false;
 
-  // Copy structure file to training_data directory
-  bool copy_structure_files;
+  /// Import properties into database, else just insert configurations w/out
+  /// properties. Properties from non-primitive configurations are never
+  /// imported for primitive configurations.
+  bool import_properties = false;
 
-  // Copy extra files from the directory where the structure is
-  // being imported from to the training_data directory
-  bool copy_additional_files;
+  /// Copy structure file to training_data directory
+  bool copy_structure_files = false;
 
-  // Allow overwriting of existing data or files by 'casm import'
-  bool overwrite;
+  /// Copy extra files from the directory where the structure is
+  /// being imported from to the training_data directory
+  bool copy_additional_files = false;
 
-  // Output reports as JSON instead of columns
-  bool output_as_json;
+  /// Allow overwriting of existing data or files by 'casm import'
+  bool overwrite = false;
+
+  /// Output reports as JSON instead of columns
+  bool output_as_json = true;
 };
 
 jsonParser &to_json(ImportSettings const &_set, jsonParser &_json);

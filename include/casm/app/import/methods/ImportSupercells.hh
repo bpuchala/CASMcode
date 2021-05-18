@@ -6,7 +6,7 @@
 namespace CASM {
 
 /// Import supercells
-class ImportSupercells : public notstd::Cloneable {
+class ImportSupercells : public ImportInterfaceBase {
   CLONEABLE(ImportSupercells)
  public:
   std::string desc() const override;

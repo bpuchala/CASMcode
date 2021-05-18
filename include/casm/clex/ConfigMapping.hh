@@ -42,9 +42,9 @@ namespace ConfigMapping {
 struct Settings {
   Settings(double _lattice_weight = 0.5, bool _ideal = false,
            bool _strict = false, bool _robust = false,
-           bool _primitive_only = false, bool _fix_volume = false,
-           bool _fix_lattice = false, Index _k_best = 1,
-           std::vector<Lattice> _forced_lattices = {},
+           // bool _primitive_only = false,
+           bool _fix_volume = false, bool _fix_lattice = false,
+           Index _k_best = 1, std::vector<Lattice> _forced_lattices = {},
            xtal::StrucMapping::LatticeFilterFunction _filter =
                xtal::StrucMapping::LatticeFilterFunction(),
            double _cost_tol = CASM::TOL, double _min_va_frac = 0.,
@@ -53,7 +53,7 @@ struct Settings {
         ideal(_ideal),
         strict(_strict),
         robust(_robust),
-        primitive_only(_primitive_only),
+        // primitive_only(_primitive_only),
         fix_volume(_fix_volume),
         fix_lattice(_fix_lattice),
         k_best(_k_best),
@@ -90,10 +90,11 @@ struct Settings {
   /// mappings that are distinct from the best mapping, but have the same cost
   bool robust;
 
-  /// If true, non-primitive configurations are only inserted in the database in
-  /// the form of their primitive form The primitive form is always inserted
-  /// into the database, regardless of setting value
-  bool primitive_only;
+  // /// If true, non-primitive configurations are only inserted in the database
+  // in
+  // /// the form of their primitive form The primitive form is always inserted
+  // /// into the database, regardless of setting value
+  // bool primitive_only;
 
   /// If true, search for potential mappings will be constrained to the
   /// supercell volume of the starting config (update operations only)
@@ -226,9 +227,9 @@ struct ConfigMapperResult {
 
   Index n_optimal(double tol = TOL) const;
 
-  /// Mapped structure, before applying lattice similarity and/or rotation to
-  /// input structure.
-  SimpleStructure structure;
+  // /// Mapped structure, before applying lattice similarity and/or rotation to
+  // /// input structure.
+  // SimpleStructure structure;
 
   /// The configurations that the input structure mapped onto
   std::map<MappingNode, Individual> maps;
@@ -236,6 +237,11 @@ struct ConfigMapperResult {
   /// Failure message if could not map to prim
   std::string fail_msg;
 };
+
+/// Construct MappedProperties from a single ConfigMapper mapping result
+MappedProperties make_mapped_properties(
+    MappingNode const &_node,
+    ConfigMapperResult::Individual const &_individual_mapping_result);
 
 /// A class for mapping an arbitrary crystal structure as a configuration of a
 /// crystal template as described by a PrimClex.  ConfigMapper manages options

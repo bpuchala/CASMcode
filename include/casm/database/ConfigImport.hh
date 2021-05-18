@@ -28,6 +28,7 @@ class jsonParser;
 }  // namespace CASM
 
 namespace CASM {
+
 namespace DB {
 
 template <>
@@ -35,7 +36,7 @@ class StructureMap<Configuration> {
  public:
   /// Construct with PrimClex and settings (see Import / Update desc)
   StructureMap<Configuration>(ConfigMapping::Settings const &_set,
-                              const PrimClex &_primclex);
+                              const PrimClex &_primclex, bool _primitive_only);
 
   typedef std::back_insert_iterator<std::vector<ConfigIO::Result> >
       map_result_inserter;
@@ -71,6 +72,8 @@ class StructureMap<Configuration> {
   PrimClex const *m_primclex_ptr;
 
   std::unique_ptr<ConfigMapper> m_configmapper;
+
+  bool m_primitive_only;
 };
 
 /// Configuration-specialized Import

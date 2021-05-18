@@ -1,7 +1,7 @@
-#ifndef CASM_import_ImportSupercells
-#define CASM_import_ImportSupercells
-
 #include "casm/app/import/methods/ImportSupercells.hh"
+
+#include "casm/clex/Supercell.hh"
+#include "casm/global/definitions.hh"
 
 namespace CASM {
 
@@ -19,5 +19,3 @@ void ImportSupercells::run(PrimClex &primclex, jsonParser const &json_options,
 }
 
 }  // namespace CASM
-
-#endif

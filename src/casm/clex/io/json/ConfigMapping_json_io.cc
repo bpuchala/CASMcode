@@ -16,7 +16,7 @@ namespace CASM {
 //   _json["lattice_weight"] = _set.lattice_weight;
 //   _json["ideal"] = _set.ideal;
 //   _json["strict"] = _set.strict;
-//   _json["primitive_only"] = _set.primitive_only;
+//   // _json["primitive_only"] = _set.primitive_only;
 //   _json["robust"] = _set.robust;
 //   _json["fix_volume"] = _set.fix_volume;
 //   _json["fix_lattice"] = _set.fix_lattice;
@@ -54,8 +54,8 @@ jsonParser const &from_json(
 
   if (_json.contains("robust")) _set.robust = _json["robust"].get<bool>();
 
-  if (_json.contains("primitive_only"))
-    _set.primitive_only = _json["primitive_only"].get<bool>();
+  // if (_json.contains("primitive_only"))
+  //   _set.primitive_only = _json["primitive_only"].get<bool>();
 
   if (_json.contains("fix_volume"))
     _set.fix_volume = _json["fix_volume"].get<bool>();

@@ -968,6 +968,8 @@ class ImportOption : public OptionHandlerBase {
 
   ImportOption();
 
+  const std::vector<std::string> &desc_vec() const { return m_desc_vec; }
+
   const std::vector<fs::path> &pos_vec() const;
 
   const std::vector<fs::path> &structures_vec() const;
@@ -976,6 +978,8 @@ class ImportOption : public OptionHandlerBase {
 
  private:
   void initialize() override;
+
+  std::vector<std::string> m_desc_vec;
 
   std::vector<fs::path> m_pos_vec;
 

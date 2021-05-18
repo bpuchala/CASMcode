@@ -20,74 +20,6 @@ namespace CASM {
 
 template class DataFormatter<DB::ConfigIO::Result>;
 
-namespace Local {
-
-/// Construct MappedProperties from a SimpleStructure solution of the
-/// configuration mapping algorithm
-///
-/// \param simple_structure A SimpleStructure solution of the mapping algorithm.
-/// This represents
-///        what the configuration mapping algorithm considered to be the best
-///        way to map the calculated SimpleStructure to the particular
-///        Configuration under consideration.
-/// \param dof_managed_properties A list of the SimpleStructure properties, both
-/// site and global,
-///        that correspond to BasicStructure degrees of freedom and thus should
-///        not be included in MappedProperties
-/// \param lattice_deformation_cost The lattice mapping score. Expected from
-/// xtal::LatticeNode::cost. \param atomic_deformation_cost The basis mapping
-/// score. Expected from xtal::AssignmentNode::cost. \param total_cost Total
-/// mapping score. Expected from xtal::MappingNode::cost. Depending on
-///        mapping method options may not be a linear combination of
-///        lattice_deformation_cost and atomic_deformation_cost.
-///
-/// Note:
-/// - Property names in "simple_structure" and "dof_managed_properties" must
-/// follow CASM property
-///   naming conventions as documented for AnisoValTraits.
-MappedProperties make_mapped_properties(
-    SimpleStructure const &simple_structure,
-    std::set<std::string> const &dof_managed_properties,
-    double lattice_deformation_cost, double atomic_deformation_cost,
-    double total_cost) {
-  MappedProperties result;
-
-  for (auto const &prop : simple_structure.properties) {
-    if (!dof_managed_properties.count(prop.first)) {
-      result.global[prop.first] = prop.second;
-      // If "*strain" is a property, rather than a DoF, we will also store the
-      // lattice
-      if (prop.first.find("strain") != std::string::npos) {
-        result.global["latvec"] = simple_structure.lat_column_mat;
-      }
-    }
-  }
-
-  for (auto const &prop : simple_structure.mol_info.properties) {
-    if (!dof_managed_properties.count(prop.first)) {
-      result.site[prop.first] = prop.second;
-      // If "disp" is a property, rather than a DoF, we will also store the
-      // coordinates
-      if (prop.first == "disp") {
-        result.site["coordinate"] = simple_structure.mol_info.coords;
-      }
-    }
-  }
-
-  result.scalar("lattice_deformation_cost") = lattice_deformation_cost;
-  result.scalar("atomic_deformation_cost") = atomic_deformation_cost;
-  result.scalar("total_cost") = total_cost;
-  return result;
-}
-
-static MappedProperties _make_mapped_properties(
-    MappingNode const &_node, ConfigMapperResult::Individual const &_map) {
-  return make_mapped_properties(
-      _map.resolved_struc, _map.dof_managed_properties, _node.lattice_node.cost,
-      _node.atomic_node.cost, _node.cost);
-}
-}  // namespace Local
-
 namespace DB {
 
 // --- Configuration specializations ---------------------------------------
@@ -101,8 +33,9 @@ ConfigMapping::Settings const &StructureMap<Configuration>::settings() const {
 /// Construct with PrimClex and ConfigMapping::Settings (see Import / Update
 /// desc)
 StructureMap<Configuration>::StructureMap(ConfigMapping::Settings const &_set,
-                                          const PrimClex &primclex)
-    : m_primclex_ptr(&primclex) {
+                                          const PrimClex &primclex,
+                                          bool _primitive_only)
+    : m_primclex_ptr(&primclex), m_primitive_only(_primitive_only) {
   auto const &shared_prim = primclex.shared_prim();
 
   // -- construct ConfigMapper --
@@ -163,11 +96,11 @@ StructureMap<Configuration>::map(
 
     // insert in database (note that this also/only inserts primitive)
     ConfigInsertResult insert_result =
-        map.second.config.insert(settings().primitive_only);
+        map.second.config.insert(m_primitive_only);
 
     res.is_new_config = insert_result.insert_canonical;
 
-    res.properties = Local::_make_mapped_properties(map.first, map.second);
+    res.properties = make_mapped_properties(map.first, map.second);
     res.properties.file_data = p.string();
     res.properties.to = insert_result.canonical_it.name();
     res.properties.origin = p.string();
@@ -431,6 +364,11 @@ int Import<Configuration>::run(const PrimClex &primclex,
   kwargs.get_else(mapping_json, "mapping", jsonParser());
   from_json(map_settings, mapping_json, shared_prim, supercell_query_dict);
 
+  bool primitive_only = false;
+  if (kwargs.contains("mapping")) {
+    kwargs.get_else(primitive_only, "primitive_only", false);
+  }
+
   ImportSettings import_settings;
   {
     jsonParser combined_json = jsonParser::object();
@@ -456,7 +394,7 @@ int Import<Configuration>::run(const PrimClex &primclex,
 
   // 'mapping' subsettings are used to construct ConfigMapper, and also returns
   // the 'used' settings
-  StructureMap<Configuration> mapper(map_settings, primclex);
+  StructureMap<Configuration> mapper(map_settings, primclex, primitive_only);
 
   jsonParser used_settings;
   used_settings["mapping"] = mapping_json;
@@ -732,7 +670,12 @@ int Update<Configuration>::run(const PrimClex &primclex,
   kwargs.get_else(mapping_json, "mapping", jsonParser());
   from_json(map_settings, mapping_json, shared_prim, supercell_query_dict);
 
-  StructureMap<Configuration> mapper(map_settings, primclex);
+  bool primitive_only = false;
+  if (kwargs.contains("mapping")) {
+    kwargs.get_else(primitive_only, "primitive_only", false);
+  }
+
+  StructureMap<Configuration> mapper(map_settings, primclex, primitive_only);
   used["mapping"] = mapping_json;
 
   // 'data' subsettings

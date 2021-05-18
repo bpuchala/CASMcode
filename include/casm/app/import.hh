@@ -73,7 +73,7 @@ class ImportCommand : public APICommand<Completer::ImportOption> {
  private:
   mutable std::unique_ptr<ImportCommandImplBase> m_impl;
 
-  std::map<std::string, std::cloneable_ptr<ImportInterfaceBase>> m_methods;
+  std::map<std::string, notstd::cloneable_ptr<ImportInterfaceBase>> m_methods;
 };
 
 }  // namespace CASM

@@ -6,7 +6,7 @@
 namespace CASM {
 
 /// Import configurations
-class ImportConfigurations : public notstd::Cloneable {
+class ImportConfigurations : public ImportInterfaceBase {
   CLONEABLE(ImportConfigurations)
  public:
   std::string desc() const override;

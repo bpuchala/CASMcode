@@ -1,6 +1,10 @@
 #include "casm/app/import.hh"
 
 #include "casm/app/DBInterface.hh"
+#include "casm/app/casm_functions.hh"
+#include "casm/app/import/methods/ImportConfigurations.hh"
+#include "casm/app/import/methods/ImportSupercells.hh"
+#include "casm/app/io/json_io_impl.hh"
 #include "casm/casm_io/Log.hh"
 #include "casm/clex/Configuration.hh"
 #include "casm/clex/PrimClex.hh"
@@ -26,41 +30,38 @@ const fs::path &ImportOption::batch_path() const { return m_batch_path; }
 void ImportOption::initialize() {
   add_help_suboption();
 
-  m_desc.add_options()
+  m_desc.add_options()(
 
-      ("pos,p",
-       po::value<std::vector<fs::path> >(&m_pos_vec)
-           ->multitoken()
-           ->value_name(ArgHandler::path()),
-       "Same as --structures.")
+      "pos,p",
+      po::value<std::vector<fs::path> >(&m_pos_vec)
+          ->multitoken()
+          ->value_name(ArgHandler::path()),
+      "Same as --structures.")(
 
-          ("structures",
-           po::value<std::vector<fs::path> >(&m_structures_vec)
-               ->multitoken()
-               ->value_name(ArgHandler::path()),
-           "Path(s) to structure(s) being imported (multiple allowed, but no "
-           "wild-card matching)")
+      "structures",
+      po::value<std::vector<fs::path> >(&m_structures_vec)
+          ->multitoken()
+          ->value_name(ArgHandler::path()),
+      "Path(s) to structure(s) being imported (multiple allowed, but no "
+      "wild-card matching)")(
 
-              ("batch,b",
-               po::value<fs::path>(&m_batch_path)
-                   ->value_name(ArgHandler::path()),
-               "Path to batch file, which should list one structure file path "
-               "per "
-               "line.")
+      "batch,b",
+      po::value<fs::path>(&m_batch_path)->value_name(ArgHandler::path()),
+      "Path to batch file, which should list one structure file path per "
+      "line.")(
 
-                  ("data,d", "Same as --properties.")
+      "data,d", "Same as --properties.")(
 
-                      ("properties",
-                       "If they exist, insert properties into the properties "
-                       "database.")
+      "properties",
+      "If they exist, insert properties into the properties  database.")(
 
-                          ("copy-structure-files",
-                           "Copy structure files into the training_data "
-                           "directory");
+      "copy-structure-files",
+      "Copy structure files into the training_data "
+      "directory")(
 
-  ("copy-additional-files",
-   "Recursively copy other files from the same directory as "
-   "the structure file into the training_data directory.");
+      "copy-additional-files",
+      "Recursively copy other files from the same directory as "
+      "the structure file into the training_data directory.");
 
   add_configtype_suboption(traits<Configuration>::short_name,
                            DB::config_types_short());
@@ -180,7 +181,7 @@ ImportCommand::ImportCommand(const CommandArgs &_args,
     : APICommand<Completer::ImportOption>(_args, _opt) {
   m_methods[traits<Configuration>::short_name] =
       notstd::make_cloneable<ImportConfigurations>();
-  m_methods[traits<Configuration>::short_name] =
+  m_methods[traits<Supercell>::short_name] =
       notstd::make_cloneable<ImportSupercells>();
 }
 
@@ -197,11 +198,42 @@ int ImportCommand::vm_count_check() const {
   return 0;
 }
 
-int ImportCommand::help() const { return impl().help(); }
+int ImportCommand::help() const {
+  // return impl().help();
+  log() << std::endl << opt().desc() << std::endl;
+  print_names(log());
+  return 0;
+}
 
-int ImportCommand::desc() const { return impl().desc(); }
+int ImportCommand::desc() const {
+  // return impl().desc();
+  std::string configtype = opt().configtype();
+  if (!m_methods.count(configtype)) {
+    print_names(log());
+    return ERR_INVALID_ARG;
+  }
+  auto it = m_methods.find(configtype);
+  log() << it->second->desc();
+  return 0;
+}
 
-int ImportCommand::run() const { return impl().run(); }
+int ImportCommand::run() const {
+  // return impl().run();
+
+  std::string configtype = opt().configtype();
+  if (!m_methods.count(configtype)) {
+    print_names(log());
+    return ERR_INVALID_ARG;
+  }
+  auto it = m_methods.find(configtype);
+
+  jsonParser json_options =
+      make_json_input(opt());  // JSON from --input string or --settings file
+  jsonParser cli_options_as_json{opt()};  // All CLI options as JSON object
+
+  it->second->run(primclex(), json_options, cli_options_as_json);
+  return 0;
+}
 
 ImportCommandImplBase &ImportCommand::impl() const {
   if (!m_impl) {
