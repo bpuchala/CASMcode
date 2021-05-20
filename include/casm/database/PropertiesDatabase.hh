@@ -171,13 +171,10 @@ class PropertiesDatabaseIterator :
 /// - A one-to-one lookup of "origin" -> MappedProperties
 /// - A one-to-many lookup of the "to" key (a Configuration name) ->
 /// MappedProperties:
-///   - An iterator to the single preferred properties for a given Configuration
-///   are returned by
-///     the "find_via_to" method. Self-mapped properties are always preferred,
-///     followed by a scoring process that may be customized.
+///   - An iterator to the single preferred properties (best scoring) for a
+///     given Configuration are returned by the "find_via_to" method.
 ///   - The set of all "origin" that mapped to the "to" Configuration are
-///   returned by the
-///     "all_origins" method.
+///   returned by the "all_origins" method.
 ///
 /// When there are multiple MappedProperties with different "origin" and the
 /// same "to" Configuration (i.e. multiple unstable ideal Configuration that
@@ -198,8 +195,7 @@ class PropertiesDatabase : public DatabaseBase {
             const ScoreMappedProperties &_score)
         : m_map(_map), m_to(_to_configname), m_score(_score) {}
 
-    /// \brief Compare mapped properties 'origin_A' and 'origin_B', preferring
-    /// self-mapped results
+    /// \brief Compare mapped properties 'origin_A' and 'origin_B'
     bool operator()(const std::string &origin_A,
                     const std::string &origin_B) const;
 
@@ -228,8 +224,6 @@ class PropertiesDatabase : public DatabaseBase {
 
   /// \brief Return iterator to data entry that is the best mapping to specified
   /// config
-  ///
-  /// - Prefers self-mapped, else best scoring
   virtual iterator find_via_to(std::string to_configname) const = 0;
 
   /// \brief Return iterator to data entry that is from the specified origin
@@ -244,6 +238,12 @@ class PropertiesDatabase : public DatabaseBase {
   /// \brief Change the score method for a single configuration
   virtual void set_score_method(std::string to_configname,
                                 const ScoreMappedProperties &score) = 0;
+
+  /// \brief Change the default score method
+  virtual void set_default_score_method(const ScoreMappedProperties &score) = 0;
+
+  /// \brief Get default score method
+  virtual ScoreMappedProperties default_score_method() const = 0;
 
   /// \brief Name of ScoreMappedProperties method
   ScoreMappedProperties score_method(std::string to_configname) const {
@@ -260,7 +260,7 @@ class PropertiesDatabase : public DatabaseBase {
     return score(*find_via_origin(origin));
   }
 
-  /// \brief Score mapping 'from'->'to'
+  /// \brief Score mapping 'origin'->'to'
   double score(const MappedProperties &value) const {
     return score_method(value.to)(value);
   }
@@ -282,14 +282,14 @@ class PropertiesDatabase : public DatabaseBase {
   }
 
  private:
-  /// \brief Private _insert MappedProperties, without modifying 'relaxed_from'
+  /// \brief Private _insert MappedProperties, without updating origins mapping
   virtual std::pair<iterator, bool> _insert(const MappedProperties &value) = 0;
 
-  /// \brief Private _erase MappedProperties, without modifying 'relaxed_from'
+  /// \brief Private _erase MappedProperties, without updating origins mapping
   virtual iterator _erase(iterator pos) = 0;
 
   /// \brief Set sorted container of names of all configurations that relaxed
-  /// 'from'->'to'
+  /// 'origin'->'to'
   virtual void _set_all_origins(std::string to_configname,
                                 const std::set<std::string, Compare> &_set) = 0;
 };

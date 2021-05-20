@@ -113,8 +113,6 @@ jsonPropertiesDatabase::size_type jsonPropertiesDatabase::size() const {
 
 /// \brief Return iterator to MappedProperties that is the best mapping to
 /// specified config
-///
-/// - Prefers self-mapped, else best scoring
 jsonPropertiesDatabase::iterator jsonPropertiesDatabase::find_via_to(
     std::string to_configname) const {
   auto it = m_origins.find(to_configname);
@@ -128,7 +126,6 @@ jsonPropertiesDatabase::iterator jsonPropertiesDatabase::find_via_to(
 /// \brief Return iterator to MappedProperties that is from the specified config
 jsonPropertiesDatabase::iterator jsonPropertiesDatabase::find_via_origin(
     std::string origin) const {
-  // m_key.from = from_configname;
   return _iterator(m_data.find(origin));
 }
 
@@ -168,6 +165,20 @@ void jsonPropertiesDatabase::set_score_method(
     }
     it->second = tmp;
   }
+}
+
+/// \brief Change the default score method
+///
+/// For all configurations that use the default score method, the changes take
+/// effect after committing and re-opening the database.
+void jsonPropertiesDatabase::set_default_score_method(
+    const ScoreMappedProperties &score) {
+  m_default_score = score;
+}
+
+/// \brief Get default score method
+ScoreMappedProperties jsonPropertiesDatabase::default_score_method() const {
+  return m_default_score;
 }
 
 jsonPropertiesDatabase::iterator jsonPropertiesDatabase::_iterator(

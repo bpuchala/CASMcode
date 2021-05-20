@@ -83,8 +83,6 @@ class jsonPropertiesDatabase : public PropertiesDatabase {
 
   /// \brief Return iterator to MappedProperties that is the best mapping to
   /// specified config
-  ///
-  /// - Prefers self-mapped, else best scoring
   iterator find_via_to(std::string to_configname) const override;
 
   /// \brief Return iterator to MappedProperties that is from the specified
@@ -99,16 +97,22 @@ class jsonPropertiesDatabase : public PropertiesDatabase {
   void set_score_method(std::string to_configname,
                         const ScoreMappedProperties &score) override;
 
+  /// \brief Change the default score method
+  void set_default_score_method(const ScoreMappedProperties &score) override;
+
+  /// \brief Get default score method
+  ScoreMappedProperties default_score_method() const override;
+
  private:
   iterator _iterator(jsonPropertiesDatabaseIterator::base_iterator _it) const;
 
-  /// \brief Private _insert MappedProperties, without modifying 'relaxed_from'
+  /// \brief Private _insert MappedProperties, without modifying 'm_origins'
   std::pair<iterator, bool> _insert(const MappedProperties &value) override;
 
-  /// \brief Private _erase MappedProperties, without modifying 'relaxed_from'
+  /// \brief Private _erase MappedProperties, without modifying 'm_origins'
   iterator _erase(iterator pos) override;
 
-  /// \brief Names of all configurations that relaxed 'from'->'to'
+  /// \brief Names of all configurations that relaxed 'origin'->'to'
   void _set_all_origins(std::string to_configname,
                         const std::set<std::string, Compare> &_set) override;
 
@@ -122,13 +126,10 @@ class jsonPropertiesDatabase : public PropertiesDatabase {
 
   ScoreMappedProperties m_default_score;
 
-  // a key whose 'from' value is modified to find MappedProperties in m_data
-  // mutable MappedProperties m_key;
-
-  // the MappedProperties container
+  // the MappedProperties container, origin -> MappedProperties
   std::map<std::string, MappedProperties> m_data;
 
-  // to -> {from, from, ...}, used to find best mapping
+  // to -> {origin, origin, ...}, used to find best mapping
   std::map<std::string, std::set<std::string, Compare> > m_origins;
 };
 
