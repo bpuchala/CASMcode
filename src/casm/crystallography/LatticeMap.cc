@@ -6,8 +6,8 @@
 #include "casm/crystallography/LatticeIsEquivalent.hh"
 #include "casm/crystallography/Strain.hh"
 #include "casm/crystallography/SymType.hh"
-#include "casm/misc/CASM_Eigen_math.hh"
 #include "casm/external/Eigen/src/Core/Matrix.h"
+#include "casm/misc/CASM_Eigen_math.hh"
 
 namespace CASM {
 namespace xtal {
@@ -124,6 +124,28 @@ double StrainCostCalculator::strain_cost(
                      1.0);
 }
 
+/// Return name of method used by `strain_cost(Eigen::Matrix3d const &)`
+///
+/// \returns One of "isotropic_strain_cost" or "anisotropic_strain_cost",
+/// depending on `strain_gram_mat` constructor argument.
+///
+/// Note:
+/// - Currently to use the symmetrized strain cost the method
+///   `strain_cost(Eigen::Matrix3d const &, SymOpVector const &)` must be used
+///   explicitly.
+///
+/// TODO:
+/// - make StrainCostCalculator a unary functor with method chosen at
+///   construction time, and then this could return "symmetrized_strain_cost"
+///   also.
+std::string StrainCostCalculator::cost_method() const {
+  if (m_sym_cost) {
+    return "anisotropic_strain_cost";
+  } else {
+    return "isotropic_strain_cost";
+  }
+}
+
 //*******************************************************************************************
 
 LatticeMap::LatticeMap(const Lattice &_parent, const Lattice &_child,
@@ -146,8 +168,10 @@ LatticeMap::LatticeMap(const Lattice &_parent, const Lattice &_child,
   Lattice reduced_child = _child.reduced_cell();
   m_child = reduced_child.lat_column_mat();
 
-  m_U = _parent.inv_lat_column_mat() * m_parent;
-  m_V_inv = m_child.inverse() * _child.lat_column_mat();
+  m_transformation_matrix_to_reduced_parent =
+      _parent.inv_lat_column_mat() * m_parent;
+  m_transformation_matrix_to_reduced_child_inv =
+      m_child.inverse() * _child.lat_column_mat();
 
   if (_range == 1)
     m_mvec_ptr = &unimodular_matrices<1>();
@@ -229,7 +253,9 @@ void LatticeMap::reset(double _better_than) {
   if (tcost <= _better_than && _check_canonical()) {
     m_cost = tcost;
     // reconstruct correct N for unreduced lattice
-    m_N = m_U * inv_mat().cast<double>().inverse() * m_V_inv;
+    m_N = m_transformation_matrix_to_reduced_parent *
+          inv_mat().cast<double>().inverse() *
+          m_transformation_matrix_to_reduced_child_inv;
   } else
     next_mapping_better_than(_better_than);
 }
@@ -279,7 +305,8 @@ const LatticeMap &LatticeMap::best_strain_mapping() const {
   // equivalence
   m_N = DMatType::Identity(3, 3);
   // m_dcache -> value of inv_mat() that gives m_N = identity;
-  m_dcache = m_V_inv * m_U;
+  m_dcache = m_transformation_matrix_to_reduced_child_inv *
+             m_transformation_matrix_to_reduced_parent;
   m_deformation_gradient = m_child * m_dcache * m_parent.inverse();
 
   double best_cost = calc_strain_cost(m_deformation_gradient);
@@ -299,6 +326,18 @@ double LatticeMap::calc_strain_cost(
     return m_calc.strain_cost(deformation_gradient, m_parent_point_group);
   else
     return m_calc.strain_cost(deformation_gradient, m_vol_factor);
+}
+
+/// The name of the method used to calculate the lattice deformation cost
+///
+/// \returns "" or "symmetry_breaking_strain_cost" or ""
+///
+std::string LatticeMap::cost_method() const {
+  if (symmetrize_strain_cost()) {
+    return "symmetry_breaking_strain_cost";
+  } else {
+    return m_calc.cost_method();
+  }
 }
 
 //*******************************************************************************************
@@ -330,10 +369,14 @@ const LatticeMap &LatticeMap::_next_mapping_better_than(double max_cost) const {
       m_cost = tcost;
 
       // need to undo the effect of transformation to reduced cell on 'N'
-      // Maybe better to get m_N from m_deformation_gradient instead?  m_U and
-      // m_V_inv depend on the lattice reduction that was performed in the
-      // constructor, so we would need to store "non-reduced" parent and child
-      m_N = m_U * inv_mat().cast<double>().inverse() * m_V_inv;
+      // Maybe better to get m_N from m_deformation_gradient instead?
+      // m_transformation_matrix_to_reduced_parent and
+      // m_transformation_matrix_to_reduced_child_inv depend on the lattice
+      // reduction that was performed in the constructor, so we would need to
+      // store "non-reduced" parent and child
+      m_N = m_transformation_matrix_to_reduced_parent *
+            inv_mat().cast<double>().inverse() *
+            m_transformation_matrix_to_reduced_child_inv;
       // std::cout << "N:\n" << m_N << "\n";
       //  We already have:
       //        m_deformation_gradient = m_child * inv_mat().cast<double>() *

@@ -28,11 +28,32 @@ class StrainCostCalculator {
   static double isotropic_strain_cost(
       Eigen::Matrix3d const &_deformation_gradient, double _vol_factor);
 
-  // \brief Volumetric factor :
-  // pow(abs(_deformation_gradient.determinant()),1./3.), used to normalize the
-  // strain cost to make it volume-independent
-  static double vol_factor(Eigen::Matrix3d const &_deformation_gradient) {
-    return pow(std::abs(_deformation_gradient.determinant()), 1. / 3.);
+  /// \brief Volumetric factor, used to normalize the strain cost to make it
+  /// volume-independent
+  ///
+  /// BP: I think there might be a inconsistency here...
+  ///
+  /// using deformation_gradient of child -> parent,
+  ///     parent * N == deformation_gradient * child
+  ///
+  /// vol_factor == pow(abs(deformation_gradient.determinant()), 1./3.)
+  ///            ?= pow(std::abs(volume(child) / volume(parent)), 1./3.)
+  static double vol_factor(Eigen::Matrix3d const &deformation_gradient) {
+    return pow(std::abs(deformation_gradient.determinant()), 1. / 3.);
+  }
+
+  /// \brief Volumetric factor, used to normalize the strain cost to make it
+  /// volume-independent
+  ///
+  /// BP: I think there might be a inconsistency here...
+  ///
+  /// using deformation_gradient of child -> parent,
+  ///     parent * N == deformation_gradient * child
+  ///
+  /// vol_factor == pow(abs(deformation_gradient.determinant()), 1./3.)
+  ///            == pow(std::abs(volume(child) / volume(parent)), 1./3.)
+  static double vol_factor(Lattice const &parent, Lattice const &child) {
+    return pow(std::abs(volume(child) / volume(parent)), 1. / 3.);
   }
 
   //\brief Anisotropic strain cost; utilizes stored gram matrix to compute
@@ -48,6 +69,9 @@ class StrainCostCalculator {
   // calculate only the symmetry breaking lattice cost
   double strain_cost(Eigen::Matrix3d const &_deformation_gradient,
                      SymOpVector const &parent_point_group) const;
+
+  /// Return name of method used by `strain_cost(Eigen::Matrix3d const &)`
+  std::string cost_method() const;
 
  private:
   Eigen::MatrixXd m_gram_mat;
@@ -75,6 +99,68 @@ class StrainCostCalculator {
 /// when the sphere is deformed at constant volume by
 /// deformation_gradient/det(deformation_gradient)^(1/3)
 
+/// LatticeMap finds mappings between lattices that minimize a strain cost.
+///
+/// Note: this documentation is attempting to use the notation and conventions
+/// from the paper `Comparing crystal structures with symmetry and geometry`,
+/// by John C Thomas, Anirudh Raju Natarajan, Anton Van der Ven
+///
+/// Goal:
+/// - Find mappings (F^{N}, N) between lattices (L1 * T1) (parent) and L2
+///   (child), of the form
+///       (L1 * T1) * N = F^{N} * L2,
+///   that minimize a strain cost, strain_cost(F^{N}).
+///
+/// Variables:
+/// - parent (L1 * T1), child (L2) (Eigen::Matrix3d): the lattices to be
+///   mapped, represented as 3x3 matrices whose columns are the lattice vectors
+/// - N (Eigen::Matrix3d): a unimodular matrix (integer valued, though
+///   represented with a floating point matrix for multiplication, with
+///   N.determinant()==1) that generates lattice vectors (L1 * T1 * N) for
+///   lattices that are equivalent to the parent lattice (L1 * T1).
+/// - F^{N} (Eigen::Matrixd): a deformation gradient,
+///        (L1 * T1) * N == F^{N} * L2,
+///   from child lattice vectors, L2, to lattice vectors (L1 * T1 * N).
+///
+/// Some relations:
+///   The deformation gradient can be decomposed into a stretch tensor and
+///   isometry,
+///       F^{N} == V^{N} * Q^{N}.
+///   It can also be defined in the reverse direction (parent -> child),
+///       F_rev^{N} * (L1 * T1) * N == L2,
+///   and decomposed into the reverse stretch tensor and isometry
+///       F_rev^{N} = V_rev^{N} * Q_rev^{N},
+///   Which are related via:
+///       V_rev^{N} == (V^{N}).inverse()
+///       Q_rev^{N} == (Q^{N}).inverse() == (Q^{N}).transpose()
+///
+/// Strain cost:
+/// - If `_symmetrize_strain_cost==false`, use a volume-normalized strain cost,
+///
+///       \tilde{V}^N = \frac{1}{\det{V}^{1/3}} V^{N}
+///       \tilde{B}^{N} = \tilde{V}^N - I
+///       \tilde{B_rev}^{N} = \tilde{V_rev}^N - I
+///
+/// The search for minimum cost mappings is best done using the reduced cells
+/// of the parent and child lattices:
+///
+///     reduced_parent = parent.reduced_cell(),
+///     reduced_parent == parent * transformation_matrix_to_reduced_parent,
+///
+///     reduced_child = child.reduced_cell(),
+///     reduced_child == child * transformation_matrix_to_reduced_child,
+///
+/// Then,
+///     reduced_parent * N_reduced == F_reduced^{N} * reduced_child
+///     parent * transformation_matrix_to_reduced_parent * N_reduced ==
+///         F_reduced^{N} * child * transformation_matrix_to_reduced_child
+///
+/// Thus,
+///     N == transformation_matrix_to_reduced_parent * N_reduced *
+///         transformation_matrix_to_reduced_child.inverse(),
+///     F^{N} == F_reduced^{N}
+///
+///
 class LatticeMap {
  public:
   typedef Eigen::Matrix<double, 3, 3, Eigen::DontAlign> DMatType;
@@ -109,29 +195,47 @@ class LatticeMap {
 
   double calc_strain_cost(const Eigen::Matrix3d &deformation_gradient) const;
 
+  /// The name of the method used to calculate the lattice deformation cost
+  std::string cost_method() const;
+
+  /// This is N
   const DMatType &matrixN() const { return m_N; }
 
+  /// This is F_rev^{N}
+  ///
+  ///     (L1 * T1) * N = F^{N} * L2
+  ///     F_rev^{N} * (L1 * T1) * N = L2
   const DMatType &deformation_gradient() const {
     return m_deformation_gradient;
   }
 
+  /// This is reduced_parent
   const DMatType &parent_matrix() const { return m_parent; }
 
+  /// This is reduced_child
   const DMatType &child_matrix() const { return m_child; }
 
   double xtal_tol() const { return m_xtal_tol; }
+
+  /// \brief If true, use cost of symmetry breaking strain; else use isotropic
+  /// strain cost or anisotropic strain cost, depending on strain_gram_mat
   bool symmetrize_strain_cost() const { return m_symmetrize_strain_cost; }
 
  private:
+  /// These are reduced_parent, and reduced_child
   DMatType m_parent, m_child;
+
   // Conversion matrices:
-  //  m_N = m_U * m_inv_count().inverse() * m_V_inv
-  DMatType m_U, m_V_inv;
+  // N = m_transformation_matrix_to_reduced_parent * N_reduced *
+  //     m_transformation_matrix_to_reduced_child.inverse(),
+  // where N_reduced == inv_mat().inverse()
+  DMatType m_transformation_matrix_to_reduced_parent;
+  DMatType m_transformation_matrix_to_reduced_child_inv;
 
   StrainCostCalculator m_calc;
 
-  // m_scale = (det(m_child)/det(m_parent))^(2/3) =
-  // det(m_deformation_gradient)^(2/3)
+  // m_vol_factor == pow( std::abs(volume(child) / volume(parent)), 1. / 3.)
+  //              == pow( (V^{N}).determinant(), 1./3.)
   double m_vol_factor;
 
   int m_range;
