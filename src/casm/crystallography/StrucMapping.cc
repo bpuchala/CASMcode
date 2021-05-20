@@ -243,7 +243,31 @@ static void partition_node(MappingNode const &_node,
 }
 }  // namespace Local
 
-//*******************************************************************************************
+namespace {
+void check_equal(Eigen::MatrixXd const &A, Eigen::MatrixXd const &B,
+                 std::string message) {
+  if (!almost_equal(A, B)) {
+    std::cout << "A: \n" << A << std::endl;
+    std::cout << "B: \n" << B << std::endl << std::endl;
+    throw std::runtime_error(message);
+  }
+}
+}  // namespace
+
+/// Construct LatticeNode, setting all members directly
+LatticeNode::LatticeNode(Superlattice _parent, Superlattice _child,
+                         Eigen::Matrix3d _stretch, Eigen::Matrix3d _isometry,
+                         double _cost, std::string _cost_method)
+    : stretch(_stretch),
+      isometry(_isometry),
+      parent(_parent),
+      child(_child),
+      cost(_cost),
+      cost_method(_cost_method) {
+  check_equal(parent.superlattice().lat_column_mat(),
+              child.superlattice().lat_column_mat(),
+              "LatticeNode constructor 0");
+}
 
 LatticeNode::LatticeNode(Lattice const &parent_prim, Lattice const &parent_scel,
                          Lattice const &child_prim, Lattice const &child_scel,
@@ -270,11 +294,17 @@ LatticeNode::LatticeNode(Lattice const &parent_prim, Lattice const &parent_scel,
   // isometry is from child to strained parent
   isometry = (F * stretch).transpose();
 
-  if (StrucMapping::is_inf(cost))
+  if (StrucMapping::is_inf(cost)) {
     cost = StrainCostCalculator::isotropic_strain_cost(stretch);
-}
+    cost_method = "isotropic_strain_cost";
+  } else {
+    cost_method = "unknown";
+  }
 
-//*******************************************************************************************
+  check_equal(parent.superlattice().lat_column_mat(),
+              stretch * isometry * child_scel.lat_column_mat(),
+              "LatticeNode constructor 1");
+}
 
 LatticeNode::LatticeNode(LatticeMap const &_lat_map, Lattice const &parent_prim,
                          Lattice const &child_prim)
@@ -286,8 +316,120 @@ LatticeNode::LatticeNode(LatticeMap const &_lat_map, Lattice const &parent_prim,
       child(Lattice(_lat_map.deformation_gradient().inverse() *
                         child_prim.lat_column_mat(),
                     parent_prim.tol()),
-            Lattice(_lat_map.parent_matrix(), parent_prim.tol())),
-      cost(_lat_map.strain_cost()) {}
+            parent.superlattice()),
+      cost(_lat_map.strain_cost()),
+      cost_method(_lat_map.cost_method()) {
+  check_equal(parent.superlattice().lat_column_mat(),
+              child.superlattice().lat_column_mat(),
+              "LatticeNode constructor 2a");
+  check_equal(_lat_map.deformation_gradient().inverse(), stretch * isometry,
+              "LatticeNode constructor 2b");
+}
+
+/// \brief Construct a LatticeNode by calculating the deformation tensor that
+/// maps a particular child superlattice to a particular parent superlattice
+///
+/// \param parent_scel and \param child_scel are integer combinations of the
+/// primitive cells 'parent_prim' and 'child_prim', respectively
+/// \param parent_prim primitive lattice being mapped to
+/// \param parent_scel exact integral multiple of parent_prim
+/// \param unmapped_child_prim primitive lattice being mapped
+/// \param unmapped_child_scel exact integral multiple of child_prim
+///
+/// Note:
+/// - In result: `parent_scel = stretch * isometry * unmapped_child_scel'
+/// - The lattice deformation cost is calculated using
+/// `StrainCostCalculator::isotropic_strain_cost(stretch)`
+///
+LatticeNode make_lattice_node(Lattice const &parent_prim,
+                              Lattice const &parent_scel,
+                              Lattice const &unmapped_child_prim,
+                              Lattice const &unmapped_child_scel) {
+  Superlattice parent{parent_prim, parent_scel};
+
+  // unmapped_child_scel = F_parent_to_unmapped_child * parent_scel
+  Eigen::Matrix3d F_parent_to_unmapped_child =
+      unmapped_child_scel.lat_column_mat() * parent_scel.inv_lat_column_mat();
+
+  // parent_scel = F_unmapped_child_to_parent * unmapped_child_scel
+  Eigen::Matrix3d F_unmapped_child_to_parent =
+      parent_scel.lat_column_mat() * unmapped_child_scel.inv_lat_column_mat();
+
+  // construct the mapped child superlattice:
+  Lattice mapped_child_prim_lattice{
+      F_unmapped_child_to_parent * unmapped_child_prim.lat_column_mat(),
+      parent_prim.tol()};
+
+  Superlattice mapped_child{mapped_child_prim_lattice, parent_scel};
+
+  // construct stretch and isometry:
+  //
+  //     want stretch, isometry such that:
+  //       parent_scel = stretch * isometry * unmapped_child_scel
+  //
+  //     given:
+  //     - unmapped_child_scel = F_parent_to_unmapped_child * parent_scel
+  //     - F_parent_to_unmapped_child = R * right_stretch_tensor
+  //     - R.inverse() == R.transpose()
+  //
+  //     then:
+  //       (R * right_stretch_tensor).inverse = (stretch * isometry)
+  //     -> stretch = right_stretch_tensor.inverse
+  //     -> R = F_parent_to_unmapped_child * stretch
+  //     -> isometry = R.transpose()
+  //
+  Eigen::Matrix3d stretch =
+      strain::right_stretch_tensor(F_parent_to_unmapped_child).inverse();
+
+  // isometry is from child to strained parent
+  Eigen::Matrix3d isometry = (F_parent_to_unmapped_child * stretch).transpose();
+
+  double cost = StrainCostCalculator::isotropic_strain_cost(stretch);
+
+  check_equal(parent.superlattice().lat_column_mat(),
+              stretch * isometry * unmapped_child_scel.lat_column_mat(),
+              "make_lattice_node 1");
+
+  return LatticeNode(parent, mapped_child, stretch, isometry, cost,
+                     "isotropic_strain_cost");
+}
+
+/// \brief Construct a LatticeNode using the mapping calculated by LatticeMap
+///
+/// \param _lat_map LatticeMap used to map `unmapped_child_prim` to
+///     `parent_prim`
+/// \param parent_prim primitive lattice being mapped to
+/// \param unmapped_child_prim primitive lattice being mapped
+///
+/// Note:
+/// - In result: `parent_scel = stretch * isometry * unmapped_child_scel'
+/// - The lattice deformation cost is calculated using the method specified by
+///   `_lat_map`.
+///
+LatticeNode make_lattice_node(LatticeMap const &_lat_map,
+                              Lattice const &parent_prim,
+                              Lattice const &unmapped_child_prim) {
+  // F: unmapped_child_scel = F * parent_scel
+  Eigen::Matrix3d F = _lat_map.deformation_gradient();
+
+  Eigen::Matrix3d stretch = polar_decomposition(F).inverse();
+  Eigen::Matrix3d isometry = (F * stretch).transpose();
+
+  // remember parent_scel == mapped_child_scel
+
+  Lattice parent_scel{_lat_map.parent_matrix(), parent_prim.tol()};
+  Superlattice parent{parent_prim, parent_scel};
+
+  Lattice mapped_child_prim{_lat_map.deformation_gradient().inverse() *
+                            unmapped_child_prim.lat_column_mat()};
+  Superlattice mapped_child{mapped_child_prim, parent_scel};
+
+  double cost = _lat_map.strain_cost();
+  std::string cost_method = _lat_map.cost_method();
+
+  return LatticeNode(parent, mapped_child, stretch, isometry, cost,
+                     cost_method);
+}
 
 //*******************************************************************************************
 
@@ -895,8 +1037,9 @@ std::set<MappingNode> StrucMapper::_seed_k_best_from_super_lats(
           }
         }
 
-        result.emplace(LatticeNode(lattice_map, p_prim_lat, c_prim_lat),
-                       this->lattice_weight());
+        LatticeNode lattice_node{lattice_map, p_prim_lat, c_prim_lat};
+
+        result.emplace(lattice_node, this->lattice_weight());
 
         lattice_map.next_mapping_better_than(max_lattice_cost);
       }

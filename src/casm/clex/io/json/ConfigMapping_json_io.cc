@@ -1,10 +1,15 @@
 #include "casm/clex/io/json/ConfigMapping_json_io.hh"
 
 #include "casm/casm_io/container/json_io.hh"
+#include "casm/casm_io/container/stream_io.hh"
 #include "casm/casm_io/dataformatter/DataFormatter_impl.hh"
+#include "casm/casm_io/enum/io_traits.hh"
 #include "casm/clex/ConfigMapping.hh"
 #include "casm/clex/Supercell.hh"
+#include "casm/clex/io/json/Configuration_json_io.hh"
 #include "casm/crystallography/Structure.hh"
+#include "casm/crystallography/io/SimpleStructureIO.hh"
+#include "casm/crystallography/io/json/StrucMapping_json_io.hh"
 #include "casm/global/definitions.hh"
 #include "casm/symmetry/SupercellSymInfo.hh"
 
@@ -116,5 +121,56 @@ jsonParser const &from_json(
 
   return _json;
 }
+
+ENUM_TRAITS(ConfigMapperResult::HintStatus)
+
+namespace {
+jsonParser &to_json(ConfigMapperResult::Individual const &individual_result,
+                    jsonParser &json, COORD_TYPE coordinate_mode) {
+  json["configuration"] = individual_result.config;
+  to_json(individual_result.resolved_struc, json["structure"], {},
+          coordinate_mode);
+  if (individual_result.hint_status != ConfigMapperResult::HintStatus::None) {
+    json["hint_status"] = to_string(individual_result.hint_status);
+    json["hint_cost"] = individual_result.hint_cost;
+  }
+  return json;
+}
+}  // anonymous namespace
+
+jsonParser &to_json(ConfigMapperResult const &config_mapping_result,
+                    jsonParser &json, COORD_TYPE coordinate_mode) {
+  json["success"] = config_mapping_result.success();
+  json["n_optimal_mappings"] = config_mapping_result.n_optimal();
+  if (!config_mapping_result.success()) {
+    json["fail_msg"] = config_mapping_result.fail_msg;
+  } else {
+    json["maps"] = jsonParser::array();
+    for (auto const &mapping : config_mapping_result.maps) {
+      jsonParser mapping_json;
+
+      // xtal::MappingNode
+      to_json(mapping.first, mapping_json["mapping"]);
+
+      // ConfigMapperResult::Individual
+      to_json(mapping.second, mapping_json["result"], coordinate_mode);
+
+      json["maps"].push_back(mapping_json);
+    }
+  }
+
+  return json;
+}
+
+const std::string traits<ConfigMapperResult::HintStatus>::name = "hint_status";
+
+const std::multimap<ConfigMapperResult::HintStatus, std::vector<std::string> >
+    traits<ConfigMapperResult::HintStatus>::strval = {
+        {ConfigMapperResult::HintStatus::None, {"None"}},
+        {ConfigMapperResult::HintStatus::Derivative, {"Derivative"}},
+        {ConfigMapperResult::HintStatus::Equivalent, {"Equivalent"}},
+        {ConfigMapperResult::HintStatus::Identical, {"Identical"}},
+        {ConfigMapperResult::HintStatus::Derivative, {"NewOcc"}},
+        {ConfigMapperResult::HintStatus::Derivative, {"NewScel"}}};
 
 }  // namespace CASM

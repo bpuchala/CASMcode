@@ -4,11 +4,13 @@
 #include <memory>
 
 #include "casm/casm_io/dataformatter/DataFormatterDecl.hh"
+#include "casm/global/enum.hh"
 
 namespace CASM {
 namespace ConfigMapping {
 struct Settings;
 }
+struct ConfigMapperResult;
 class Structure;
 class Supercell;
 class jsonParser;
@@ -20,6 +22,9 @@ jsonParser const &from_json(
     ConfigMapping::Settings &_set, jsonParser const &_json,
     std::shared_ptr<Structure const> const &shared_prim,
     DataFormatterDictionary<Supercell> const &supercell_query_dict);
+
+jsonParser &to_json(ConfigMapperResult const &config_mapping_result,
+                    jsonParser &json, COORD_TYPE coordinate_mode);
 
 }  // namespace CASM
 

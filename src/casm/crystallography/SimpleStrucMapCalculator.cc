@@ -234,10 +234,11 @@ void SimpleStrucMapCalculator::finalize(
   populate_displacement(node, _child_struc);
   node.is_valid = this->_assign_molecules(node, _child_struc);
   if (!symmetrize_atomic_cost ||
-      this->sym_invariant_displacement_modes().size() == 0)
+      this->sym_invariant_displacement_modes().size() == 0) {
     node.atomic_node.cost =
         StrucMapping::atomic_cost(node, this->struc_info(_child_struc).size());
-  else {
+    node.atomic_node.cost_method = "displacement_cost";
+  } else {
     // Get the parent site indices for each site in the supercell
     auto basis_idx = superstructure_basis_idx(
         (node.lattice_node).parent.transformation_matrix_to_super().cast<int>(),
@@ -271,9 +272,11 @@ void SimpleStrucMapCalculator::finalize(
     node.atom_displacement = sym_removed_disp;
     node.atomic_node.cost =
         StrucMapping::atomic_cost(node, this->struc_info(_child_struc).size());
+    node.atomic_node.cost_method = "symmetry_breaking_displacement_cost";
   }
   node.cost = node.atomic_weight * node.atomic_node.cost +
               node.lattice_weight * node.lattice_node.cost;
+  node.cost_method = "linearly_weighted_lattice_and_atomic_cost";
 
   return;
 }

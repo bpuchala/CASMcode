@@ -49,28 +49,38 @@ inline double small_inf() { return 10E10; }
 
 inline bool is_inf(double _val) { return _val > small_inf() / 2.; }
 
-/// \brief Calculate the basis cost function of a MappingNode as the normalized
-/// mean-square displacement of its atoms The displacement vectors are deformed
-/// to the CHILD structure's coordinate system before calculating \param
-/// mapped_result a proposed mapping; both lattice_node and atomic_node of
-/// mapped_result must be initialized \param Nsites number of atoms (excluding
-/// vacancies) in the relaxed structure, for proper normalization result is
-/// dimensionless, having been normalized by the squared radius of a sphere
-/// having the same atomic volume of CHILD structure
+/// Calculate the atomic deformation cost (using child's coordinates)
+///
+/// The atomic deformation cost of a MappingNode is calculated as the normalized
+/// mean-square displacement of its atoms. The displacement vectors are
+/// deformed to the child structure's coordinate system before calculating.
+///
+/// \param mapped_result a proposed mapping; both lattice_node and atomic_node
+///     of mapped_result must be initialized
+/// \param Nsites number of atoms (excluding vacancies) in the relaxed
+///     structure, for proper normalization
+///
+/// Result is dimensionless, having been normalized by the squared radius of a
+/// sphere having the same atomic volume of child structure
 double atomic_cost_child(const MappingNode &mapped_result, Index Nsites);
 
-/// \brief Calculate the basis cost function of a MappingNode as the normalized
-/// mean-square displacement of its atoms The displacement vectors are deformed
-/// to the PARENT structure's coordinate system before calculating \param
-/// mapped_result a proposed mapping; both lattice_node and atomic_node of
-/// mapped_result must be initialized \param Nsites number of atoms (excluding
-/// vacancies) in the relaxed structure, for proper normalization result is
-/// dimensionless, having been normalized by the squared radius of a sphere
-/// having the same atomic volume of PARENT structure
+/// Calculate the atomic deformation cost (using parent's coordinates)
+///
+/// The atomic deformation cost of a MappingNode is calculated as the normalized
+/// mean-square displacement of its atoms. The displacement vectors are
+/// deformed to the parent structure's coordinate system before calculating.
+///
+/// \param mapped_result a proposed mapping; both lattice_node and atomic_node
+///     of mapped_result must be initialized
+/// \param Nsites number of atoms (excluding vacancies) in the relaxed
+///     structure, for proper normalization.
+///
+/// Result is dimensionless, having been normalized by the squared radius of a
+/// sphere having the same atomic volume of parent structure
 double atomic_cost_parent(const MappingNode &mapped_result, Index Nsites);
 
-/// \brief Calculate the basis cost function of a MappingNode as the average of
-/// atomic_cost_child and atomic_cost_parent
+/// \brief Calculate the atomic deformation cost as the average of the
+/// `atomic_cost_child` and `atomic_cost_parent`
 double atomic_cost(const MappingNode &mapped_config, Index Nsites);
 
 /// \brief Calculate the symmetry breaking atomic cost of a MappingNode
@@ -139,25 +149,52 @@ struct LatticeNode {
   /// \brief strain_cost of the LatticeNode
   double cost;
 
+  /// \brief Holds the name of the method used to calculate the lattice
+  /// deformation cost
+  std::string cost_method;
+
+  /// Construct LatticeNode, setting all members directly
+  LatticeNode(Superlattice parent, Superlattice child, Eigen::Matrix3d stretch,
+              Eigen::Matrix3d isometry, double cost, std::string cost_method);
+
+  // We should prefer putting the logic of how LatticeNode members are
+  // calculated in standalone methods rather than constructors.
+
   /// \brief Construct with ideal parent_scel and deformed child_scel, which are
-  /// related by a deformation tensor
+  /// related by a deformation tensor [deprecated]
   /// @param parent_scel and @param child_scel are integer combinations of the
   /// primitive cells 'parent_prim' and 'child_prim', respectively
   /// @param child_N_atom is number of sites in the child
   /// \param _cost is used to specify mapping cost (in default case -- big_inf()
   /// -- cost will be calculated from scratch)
+  ///
+  /// Note: This method is deprecated. Prefer using `make_lattice_node`.
   LatticeNode(Lattice const &parent_prim, Lattice const &parent_scel,
               Lattice const &child_prim, Lattice const &child_scel,
               Index child_N_atom, double _cost = StrucMapping::big_inf());
 
   /// \brief Construct with LatticeMap, which relates a supercell of parent_prim
-  /// to a supercell of child_prim
+  /// to a supercell of child_prim [deprecated]
   /// @param lat_map specifies a supercell that is a supercell of parent_prim,
   /// but also an idealized supercell of child_prim
   /// @param child_N_atom is number of sites in the child
+  ///
+  /// Note: This method is deprecated. Prefer using `make_lattice_node`.
   LatticeNode(LatticeMap const &_lat_map, Lattice const &parent_prim,
               Lattice const &child_prim);
 };
+
+/// \brief Construct a LatticeNode by calculating the deformation tensor that
+/// maps a particular child superlattice to a particular parent superlattice
+LatticeNode make_lattice_node(Lattice const &parent_prim,
+                              Lattice const &parent_scel,
+                              Lattice const &unmapped_child_prim,
+                              Lattice const &unmapped_child_scel);
+
+/// \brief Construct a LatticeNode using the mapping calculated by LatticeMap
+LatticeNode make_lattice_node(LatticeMap const &_lat_map,
+                              Lattice const &parent_prim,
+                              Lattice const &unmapped_child_prim);
 
 /// \brief Compare two LatticeMap objects, based on their mapping cost first,
 /// followed by PrimGrid transformation matrices
@@ -226,6 +263,9 @@ struct AssignmentNode {
   /// \brief Total cost of best solution to the constrained assignment problem
   /// having some forced_on assignments
   double cost;
+
+  /// Name of the method used to calculate the atomic displacement cost
+  std::string cost_method;
 
   double cost_tol() const { return m_cost_tol; }
 
@@ -298,6 +338,9 @@ struct MappingNode {
   /// Not guaranteed to be a linear function of lattice_node.cost and
   /// atomic_node.cost
   double cost;
+
+  /// Method used to calculate the total finalized cost
+  std::string cost_method;
 
   /// \brief 3xN matrix of displacements for all sites in parent supercell (Va
   /// are included, but set to Zero)
