@@ -360,7 +360,7 @@ jsonParser &to_json(xtal::SimpleStructure const &simple_structure,
   // Output mol_info
   auto const &mol_info = simple_structure.mol_info;
   std::vector<Index> mol_permute;
-  ::_types_to_json(atom_info.names, json, "mol_type", excluded_species,
+  ::_types_to_json(mol_info.names, json, "mol_type", excluded_species,
                    mol_permute);
   ::_coords_to_json(mol_info.coords, json, "mol_coords", mol_permute,
                     to_coord_mode_matrix);
