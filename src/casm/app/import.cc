@@ -53,7 +53,7 @@ void ImportOption::initialize() {
       "data,d", "Same as --properties.")(
 
       "properties",
-      "If they exist, insert properties into the properties  database.")(
+      "If they exist, insert properties into the properties database.")(
 
       "copy-structure-files",
       "Copy structure files into the training_data "
@@ -61,11 +61,18 @@ void ImportOption::initialize() {
 
       "copy-additional-files",
       "Recursively copy other files from the same directory as "
-      "the structure file into the training_data directory.");
+      "the structure file into the training_data directory.")(
+
+      "selection,c",
+      po::value<fs::path>(&m_selection_path)->value_name(ArgHandler::path()),
+      (std::string("Read properties.calc.json files from training_data "
+                   "directories of selected configurations. ") +
+       singleline_help<DB::SELECTION_TYPE>())
+          .c_str());
 
   add_configtype_suboption(traits<Configuration>::short_name,
                            DB::config_types_short());
-  add_selection_no_default_suboption();
+
   bool required = false;
   add_settings_suboption(required);
   add_input_suboption(required);

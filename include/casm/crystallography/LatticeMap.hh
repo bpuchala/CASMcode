@@ -106,8 +106,8 @@ class StrainCostCalculator {
 /// by John C Thomas, Anirudh Raju Natarajan, Anton Van der Ven
 ///
 /// Goal:
-/// - Find mappings (F^{N}, N) between lattices (L1 * T1) (parent) and L2
-///   (child), of the form
+/// - Find mapping solutions, (N, F^{N}), between lattices (L1 * T1) (parent)
+///   and L2 (child), of the form
 ///       (L1 * T1) * N = F^{N} * L2,
 ///   that minimize a strain cost, strain_cost(F^{N}).
 ///
@@ -133,13 +133,45 @@ class StrainCostCalculator {
 ///   Which are related via:
 ///       V_rev^{N} == (V^{N}).inverse()
 ///       Q_rev^{N} == (Q^{N}).inverse() == (Q^{N}).transpose()
+///   The Biot strain tensor, B^{N}, and reverse:
+///       B^{N} = V^{N} - I
+///       B_rev^{N} = V_rev^{N} - I
 ///
 /// Strain cost:
-/// - If `_symmetrize_strain_cost==false`, use a volume-normalized strain cost,
+/// - 'strain_cost': (default, used if `_symmetrize_strain_cost==false`) a
+///   volume-normalized strain cost, calculated to be invariant to which
+///   structure is the child/parent. The `\tilde` indicates that the value is
+///   normalized to be volume invariant.
 ///
 ///       \tilde{V}^N = \frac{1}{\det{V}^{1/3}} V^{N}
 ///       \tilde{B}^{N} = \tilde{V}^N - I
+///
+///       \tilde{V_rev}^N = \frac{1}{\det{V_rev}^{1/3}} V_rev^{N}
 ///       \tilde{B_rev}^{N} = \tilde{V_rev}^N - I
+///
+///       strain_cost = (1./2.)*(
+///                         (1./3.)*trace( (\tilde{B}^{N})^2 ) +
+///                         (1./3.)*trace( (\tilde{B_rev}^{N})^2 ) )
+///
+/// - 'symmetry_breaking_strain_cost': (used if
+///   `_symmetrize_strain_cost==true`) a strain cost, calculated with only the
+///   the components of the strain that break the symmetry of the parent
+///   structure.
+///
+///       symmetry_breaking_strain_cost =
+///           (1./2.)*(
+///               (1./3.)*trace( (\tilde{B_sym_break}^{N})^2 ) +
+///               (1./3.)*trace( (\tilde{B_sym_break_rev}^{N})^2 ) )
+///
+///       B_sym_break = B - B_sym, the symmetry-breaking Biot strain
+///       B_sym = (1./N_G1) * sum_i ( G1_i * B * G1_i.transpose() ),
+///       where G1_i are point group operations of parent structure, N_G1 is
+///       the total number of operations,
+///       and similarly for B_sym_break_rev from B_rev.
+///
+/// - 'anisotropic_strain_cost': (used if strain_gram_mat != I)
+///
+///   To be documented or removed....
 ///
 /// The search for minimum cost mappings is best done using the reduced cells
 /// of the parent and child lattices:
@@ -161,11 +193,16 @@ class StrainCostCalculator {
 ///     F^{N} == F_reduced^{N}
 ///
 ///
+/// --- Usage: ---
+///
+///
+///
 class LatticeMap {
  public:
   typedef Eigen::Matrix<double, 3, 3, Eigen::DontAlign> DMatType;
   typedef Eigen::Matrix<int, 3, 3, Eigen::DontAlign> IMatType;
 
+  /// LatticeMap constructor
   LatticeMap(Lattice const &_parent, Lattice const &_child, Index _num_atoms,
              int _range, SymOpVector const &_parent_point_group,
              SymOpVector const &_child_point_group,
@@ -174,6 +211,7 @@ class LatticeMap {
              double _init_better_than = 1e20,
              bool _symmetrize_strain_cost = false, double _xtal_tol = TOL);
 
+  /// LatticeMap constructor
   LatticeMap(Eigen::Ref<const DMatType> const &_parent,
              Eigen::Ref<const DMatType> const &_child, Index _num_atoms,
              int _range, SymOpVector const &_parent_point_group,
@@ -183,16 +221,22 @@ class LatticeMap {
              double _init_better_than = 1e20,
              bool _symmetrize_strain_cost = false, double _xtal_tol = TOL);
 
-  void reset(double _better_than = 1e20);
-
-  // Finds the smallest strain tensor (in terms of Frobenius norm) that deforms
-  // (*this) into a lattice symmetrically equivalent to 'child_lattice'
+  /// Iterate until all possible solutions have been considered
   LatticeMap const &best_strain_mapping() const;
 
+  /// \brief Iterate until the next solution (N, F^{N}) with lattice mapping
+  /// score less than `max_cost` is found.
   LatticeMap const &next_mapping_better_than(double max_cost) const;
 
+  /// The cost of the current solution
+  ///
+  /// The value of the current solution is:
+  /// - F_rev^{N} = this->deformation_cost()
+  /// - N = this->matrixN()
   double strain_cost() const { return m_cost; }
 
+  /// \brief Use the current strain cost method (determined by constructor
+  /// arguments) to calculate the strain cost of a deformation
   double calc_strain_cost(const Eigen::Matrix3d &deformation_gradient) const;
 
   /// The name of the method used to calculate the lattice deformation cost
@@ -201,20 +245,26 @@ class LatticeMap {
   /// This is N
   const DMatType &matrixN() const { return m_N; }
 
-  /// This is F_rev^{N}
+  /// This is F_rev^{N} (parent to child deformation):
   ///
-  ///     (L1 * T1) * N = F^{N} * L2
   ///     F_rev^{N} * (L1 * T1) * N = L2
   const DMatType &deformation_gradient() const {
     return m_deformation_gradient;
   }
 
-  /// This is reduced_parent
+  /// This is parent lattice column matrix
   const DMatType &parent_matrix() const { return m_parent; }
 
-  /// This is reduced_child
+  /// This is child lattice column matrix
   const DMatType &child_matrix() const { return m_child; }
 
+  /// This is reduced_parent lattice column matrix
+  const DMatType &reduced_parent_matrix() const { return m_reduced_parent; }
+
+  /// This is reduced_child lattice column matrix
+  const DMatType &reduced_child_matrix() const { return m_reduced_child; }
+
+  /// This is the tolerance used for comparisons
   double xtal_tol() const { return m_xtal_tol; }
 
   /// \brief If true, use cost of symmetry breaking strain; else use isotropic
@@ -222,8 +272,12 @@ class LatticeMap {
   bool symmetrize_strain_cost() const { return m_symmetrize_strain_cost; }
 
  private:
-  /// These are reduced_parent, and reduced_child
+  /// These are the original, not reduced, parent and child lattice column
+  /// matrices
   DMatType m_parent, m_child;
+
+  /// These are reduced cell parent and child lattice column matrices
+  DMatType m_reduced_parent, m_reduced_child;
 
   // Conversion matrices:
   // N = m_transformation_matrix_to_reduced_parent * N_reduced *
@@ -238,9 +292,11 @@ class LatticeMap {
   //              == pow( (V^{N}).determinant(), 1./3.)
   double m_vol_factor;
 
+  // The absolute value of an element of N is not allowed be be greater than
+  // m_range.
   int m_range;
 
-  // pointer to static list of unimodular matrices
+  // pointer to static list of unimodular matrices (used as N.inverse())
   std::vector<Eigen::Matrix3i> const *m_mvec_ptr;
 
   // parent point group matrices, in fractional coordinates
@@ -262,22 +318,23 @@ class LatticeMap {
   mutable DMatType m_deformation_gradient, m_N, m_dcache;
   mutable IMatType m_icache;
 
+  void _reset(double _better_than = 1e20);
+
   ///\brief Returns the inverse of the current transformation matrix under
   /// consideration
   // We treat the unimodular matrices as the inverse of the transformation
   // matrices that we are actively considering, allowing fewer matrix inversions
   Eigen::Matrix3i const &inv_mat() const { return (*m_mvec_ptr)[m_currmat]; }
 
-  ///\brief Number of unimodular matrices
+  /// Number of unimodular matrices
   Index n_mat() const { return m_mvec_ptr->size(); }
 
-  /// \brief Returns true if current transformation is the canonical equivalent
+  /// Returns true if current N matrix is the canonical equivalent
   bool _check_canonical() const;
 
+  /// \brief Iterate until the next solution (N, F^{N}) with lattice mapping
+  /// score less than `max_cost` is found.
   LatticeMap const &_next_mapping_better_than(double max_cost) const;
-
-  // use m_deformation_gradient to calculate strain cost
-  double _calc_strain_cost() const;
 };
 
 /** @} */

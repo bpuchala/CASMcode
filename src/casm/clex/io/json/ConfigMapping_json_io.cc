@@ -125,14 +125,16 @@ jsonParser const &from_json(
 ENUM_TRAITS(ConfigMapperResult::HintStatus)
 
 namespace {
-jsonParser &to_json(ConfigMapperResult::Individual const &individual_result,
+jsonParser &to_json(ConfigMapperResult::ConfigurationMapping const &mapping,
                     jsonParser &json, COORD_TYPE coordinate_mode) {
-  json["configuration"] = individual_result.config;
-  to_json(individual_result.resolved_struc, json["structure"], {},
-          coordinate_mode);
-  if (individual_result.hint_status != ConfigMapperResult::HintStatus::None) {
-    json["hint_status"] = to_string(individual_result.hint_status);
-    json["hint_cost"] = individual_result.hint_cost;
+  to_json(mapping.mapping, json["mapping"]);
+  to_json(mapping.mapped_child, json["mapped_child"], {}, coordinate_mode);
+  json["mapped_configuration"] = mapping.mapped_configuration;
+  json["mapped_properties"] = mapping.mapped_properties;
+  // TODO: output the rest of the data
+  if (mapping.hint_status != ConfigMapperResult::HintStatus::None) {
+    json["hint_status"] = to_string(mapping.hint_status);
+    json["hint_cost"] = mapping.hint_cost;
   }
   return json;
 }
@@ -148,13 +150,7 @@ jsonParser &to_json(ConfigMapperResult const &config_mapping_result,
     json["maps"] = jsonParser::array();
     for (auto const &mapping : config_mapping_result.maps) {
       jsonParser mapping_json;
-
-      // xtal::MappingNode
-      to_json(mapping.first, mapping_json["mapping"]);
-
-      // ConfigMapperResult::Individual
-      to_json(mapping.second, mapping_json["result"], coordinate_mode);
-
+      to_json(mapping, mapping_json, coordinate_mode);
       json["maps"].push_back(mapping_json);
     }
   }

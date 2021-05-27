@@ -18,13 +18,6 @@ class SimpleStructure;
 class SimpleStrucMapCalculator;
 class StrucMapper;
 }  // namespace xtal
-using xtal::BasicStructure;
-using xtal::Lattice;
-using xtal::MappingNode;
-using xtal::SimpleStrucMapCalculator;
-using xtal::SimpleStructure;
-using xtal::Site;
-using xtal::StrucMapper;
 
 class Supercell;
 class PermuteIterator;
@@ -38,6 +31,14 @@ namespace ConfigMapping {
 /// \brief Struct with optional parameters for Config Mapping
 /// Specifies default parameters for all values, in order to simplify
 /// parsing from JSON
+///
+/// There are essentially 5 modes for structure mapping:
+///
+/// Method 1: hint && 'ideal' option (exactly known lattice mapping)
+/// Method 2: hint && 'fix_lattice' option (exactly known lattice)
+/// Method 3: hint && 'fix_volume' option (exactly known volume)
+/// Method 4: no hint && 'ideal' option (ideal integer supercell of prim)
+/// Method 5: otherwise, most general mapping
 
 struct Settings {
   Settings(double _lattice_weight = 0.5, bool _ideal = false,
@@ -66,7 +67,7 @@ struct Settings {
 
   int options() const {
     int opt = 0;
-    if (robust) opt |= StrucMapper::robust;
+    if (robust) opt |= xtal::StrucMapper::robust;
     return opt;
   }
 
@@ -90,18 +91,12 @@ struct Settings {
   /// mappings that are distinct from the best mapping, but have the same cost
   bool robust;
 
-  // /// If true, non-primitive configurations are only inserted in the database
-  // in
-  // /// the form of their primitive form The primitive form is always inserted
-  // /// into the database, regardless of setting value
-  // bool primitive_only;
-
   /// If true, search for potential mappings will be constrained to the
-  /// supercell volume of the starting config (update operations only)
+  /// supercell volume of the hint config
   bool fix_volume;
 
   /// If true, search for potential mappings will be constrained to the exact
-  /// supercell of the starting config (update operations only)
+  /// supercell of the hint config
   bool fix_lattice;
 
   /// Specify the number, k, of k-best mappings to include in solution set
@@ -134,47 +129,19 @@ struct Settings {
 };
 }  // namespace ConfigMapping
 
-/// \brief Reorders the permutation and compounds the spatial isometry (rotation
-/// + translation) of _node with that of _it
-MappingNode copy_apply(PermuteIterator const &_it, MappingNode const &_node,
-                       bool transform_cost_mat = true);
-
-/// \brief Initializes configdof of Supercell '_scel' corresponding to an
-/// idealized child structure (encoded by _child_struc) _child_struc is assumed
-/// to have been idealized via structure-mapping or to be the result of
-/// converting a configuration to a SimpleStructure. result.second gives list of
-/// properties that were utilized in the course of building the configdof
-std::pair<ConfigDoF, std::set<std::string> > to_configdof(
-    SimpleStructure const &_child_struc, Supercell const &_scel);
-
-class PrimStrucMapCalculator : public SimpleStrucMapCalculator {
- public:
-  PrimStrucMapCalculator(BasicStructure const &_prim,
-                         std::vector<xtal::SymOp> const &symgroup = {},
-                         SimpleStructure::SpeciesMode _species_mode =
-                             SimpleStructure::SpeciesMode::ATOM);
-
- private:
-  /// \brief Make an exact copy of the calculator (including any initialized
-  /// members)
-  StrucMapCalculatorInterface *_clone() const override {
-    return new PrimStrucMapCalculator(*this);
-  }
-
-  BasicStructure m_prim;
-};
-
 /// Data structure holding results of ConfigMapper algorithm
 struct ConfigMapperResult {
-  /// Specify degree to which the hinted configuration matches the imported
-  /// structure:
-  ///    None : unspecified/unknown
-  ///    Derivate : same occupation, but other DoFs are different
-  ///    Equivalent : same occupation and DoFs, but related to Hint by a SymOp
-  ///    of the ideal crystal Identical : Exact same occupation and DoFs NewOcc
-  ///    : Occupation has no relation to Hint (no statement about other DoFs,
-  ///    but they should be presumed different) NewScel : Mapped configuration
-  ///    corresponds to different supercell than Hint
+  /// Specify degree to which the hinted configuration matches the final mapped
+  /// configuration:
+  /// - None : unspecified/unknown
+  /// - Derivate : same occupation, but other DoFs are different
+  /// - Equivalent : same occupation and DoFs, but related to Hint by a SymOp
+  ///   of the ideal crystal
+  /// - Identical : Exact same occupation and DoFs
+  /// - NewOcc : Occupation has no relation to Hint (no statement about other
+  ///   DoFs, but they should be presumed different)
+  /// - NewScel : Mapped configuration corresponds to different supercell than
+  ///   Hint
   enum class HintStatus {
     None,
     Derivative,
@@ -184,41 +151,200 @@ struct ConfigMapperResult {
     NewScel
   };
 
-  struct Individual {
-    Individual(Configuration _config, SimpleStructure _resolved_struc,
-               std::set<std::string> _dof_managed_properties,
-               HintStatus _hint_status = HintStatus::None,
-               double _hint_cost = xtal::StrucMapping::big_inf())
-        : config(std::move(_config)),
-          resolved_struc(std::move(_resolved_struc)),
-          dof_managed_properties(std::move(_dof_managed_properties)),
+  /// Data structure storing a structure -> configuration mapping
+  ///
+  /// See member comments for definitions
+  struct ConfigurationMapping {
+    ConfigurationMapping(xtal::SimpleStructure const &_unmapped_child,
+                         xtal::MappingNode const &_mapping,
+                         xtal::SimpleStructure const &_mapped_child,
+                         Configuration const &_mapped_configuration,
+                         MappedProperties const &_mapped_properties,
+                         xtal::SymOp const &_symop_to_final,
+                         Eigen::Matrix3l const &_transformation_matrix_to_final,
+                         Configuration const &_final_configuration,
+                         MappedProperties const &_final_properties,
+                         HintStatus _hint_status, double _hint_cost)
+        : unmapped_child(_unmapped_child),
+          mapping(_mapping),
+          mapped_child(_mapped_child),
+          mapped_configuration(_mapped_configuration),
+          mapped_properties(_mapped_properties),
+          symop_to_final(_symop_to_final),
+          transformation_matrix_to_final(_transformation_matrix_to_final),
+          final_configuration(_final_configuration),
+          final_properties(_final_properties),
           hint_status(_hint_status),
           hint_cost(_hint_cost) {}
 
-    Configuration config;
+    /// Original child structure, without any mapping or modifications
+    xtal::SimpleStructure unmapped_child;
 
-    // Child structure, converted to setting of reference structure (i.e., prim)
-    // It is equivalent to initial child structure, but the following
-    // transformations have been performed:
-    // - Atoms converted to molecules and ordered as in reference structure
-    // - Vacancies explicitly inserted, if any were inferred from mapping
-    // - Sites are translated such that average displacement of child sites
-    // relative to parent sites is 0
-    // - Lattice and coordinates rotated
-    // - Integer combinations of child lattice vectors (Lc) to match parent
-    // lattice vectors (Lp) such that
-    //      Lc = U * Lp
-    //   where U is symmetric right stretch tensor
-    // - Permutation and rotation also applied to all properties of
-    // resolved_struc
-    SimpleStructure resolved_struc;
+    /// StrucMapper output, describes mapping from `unmapped_child` structure to
+    /// `mapped_child` structure via a lattice mapping and an atomic assignment
+    /// mapping
+    xtal::MappingNode mapping;
 
-    // list of properties that are handled by DoFs and are thus not considered
-    // properties
-    std::set<std::string> dof_managed_properties;
+    /// Mapped child structure, equivalent to `unmapped_child`, but mapped by
+    /// StrucMapper and transformed according to the results stored in
+    /// `mapping` to the setting of the `parent` superstructure.
+    ///
+    /// Lattice mapping results satisfy:
+    ///
+    ///     mapped_child.lat_column_mat = mapping.lattice_node.stretch *
+    ///         mapping.lattice_node.isometry *
+    ///         unmapped_child.lat_column_mat *
+    ///         mapping.lattice_node.child.transformation_matrix_to_super()
+    ///             .cast<double>();
+    ///
+    /// Atomic assignment mapping results satisfy:
+    ///
+    ///     mapped_child.atom_info.names[i] =
+    ///         unmapped_child.atom_info.names[perm[i]],
+    ///
+    ///     mapped_child.atom_info.coords.col(i) +
+    ///         mapping.atom_displacement.col(i) =
+    ///         mapping.lattice_node.stretch * mapping.lattice_node.isometry *
+    ///         unmapped_child.atom_info.coords.col(perm[i]) +
+    ///             mapping.atomic_node.translation,
+    ///
+    ///     where perm = mapping.atom_permutation.
+    ///
+    /// Additionally, `mapping.mol_map`, and `mapping.mol_labels` hold
+    /// information used for on molecule mapping:
+    ///
+    ///     mapping.mol_map[i] (std::set<Index): the set atom indices of parent
+    ///         superstructure that comprise the molecule at its i-th site.
+    ///
+    ///     mapping.mol_labels[i] (std::pair<std::string, Index>): the name and
+    ///         occupant index of the molecule on the the i-th site of the
+    ///         parent superstructure
+    ///
+    ///     mapped_child.mol_info.names[i] = mapping.mol_labels[i].first
+    ///
+    ///     mapped_child.mol_info.coords.col(i) =
+    ///         mapping.lattice_node.stretch.inverse() *
+    ///         (parent_superstructure.coords(i) + mol_displacement.col(i))
+    ///
+    ///     where mol_displacement is 3xN matrix, mol_displacement.col(i) =
+    ///         mean of mapping.atom_displacement.col(j),
+    ///         for j in mapping.mol_map[i],
+    ///     N is number of sites in parent_superstructure
+    ///
+    ///
+    /// DoF / properties are mapped according to:
+    ///
+    ///     For global DoF/properties:
+    ///         v_mapped = matrix * v_unmapped,
+    ///
+    ///     For site DoF/properties, on site i:
+    ///         v_mapped[i] = matrix * v_unmapped[perm[i]],
+    ///
+    ///     where matrix = AnisoValTraits(type).symop_to_matrix(
+    ///                        mapping.lattice_node.isometry,
+    ///                        mapping.lattice_node.stretch.inverse() *
+    ///                            mapping.atomic_node.translation,
+    ///                        mapping.atomic_node.time_reversal)
+    ///     and perm = mapping.atom_permutation
+    ///
+    /// Additionally, the following global properties are added:
+    ///
+    ///     mapped_child.properties["Ustrain"] =
+    ///         StrainConverter("Ustrain").unroll_E(
+    ///             mapping.lattice_node.stretch.inverse());
+    ///
+    ///     mapped_child.mol_info.properties["disp"] = mol_displacement,
+    ///
+    ///     mapped_child.properties["isometry"] =
+    ///         // unrolled 9-element vector from mapping.lattice_node.isometry
+    ///         // TODO: document convention (col-major?), why is it included?
+    ///
+    ///
+    xtal::SimpleStructure mapped_child;
 
+    /// Configuration, as directly constructed from `mapped_child`
+    ///
+    /// Relationships that hold:
+    ///
+    ///     mapped_configuration.ideal_lattice().lat_column_mat() =
+    ///         mapped_child.lat_column_mat
+    ///
+    ///     mapped_configuration.occ(i) = mapping.mol_labels[i].second
+    ///
+    /// Continuous DoF are read directly from `mapped_child.properties` and
+    /// `mapped_child.mol_info.properties`.
+    Configuration mapped_configuration;
+
+    /// Properties, as determined from mapping, and transformed to match the
+    /// `mapped_child` and `mapped_configuration`
+    ///
+    /// Includes:
+    /// - Global properties from `mapped_child.properties` in
+    /// `mapped_properties.global` (reminder: stored as name:vector)
+    /// - Local properties from `mapped_child.mol_info.properties` in
+    /// `mapped_properties.site` (reminder: stored as name:matrix, with one
+    /// column per site)
+    ///
+    /// Additionally:
+    /// - If "disp" is not a DoF, then it will also store the molecular
+    /// coordinates using:
+    ///     mapped_properties.site["coordinate"] = mapped_child.mol_info.coords
+    ///
+    /// - If "*strain" (any flavor of strain) is not a DoF, then it will also
+    /// store the lattice vectors:
+    ///     mapped_properties.global["latvec"] = mapped_child.lat_column_mat;
+    ///
+    MappedProperties mapped_properties;
+
+    /// The transformation from mapped configuration DoF and properties to
+    /// final configuration DoF and properties is made according to:
+    ///
+    ///     v_final = matrix * v_mapped,
+    ///     where matrix = AnisoValTraits(type).symop_to_matrix(
+    ///                        symop_to_final.matrix,
+    ///                        symop_to_final.translation,
+    ///                        symop_to_final.time_reversal)
+    ///
+    /// The site DoF and property values are similarly transformed, and also
+    /// moved from site with coordinate `r_mapped` to site with coordinate
+    /// `r_final` (and then placed within the periodic boundaries of the
+    /// supercell) according to:
+    ///
+    ///     r_final = symop_to_final.matrix * r_mapped +
+    ///               symop_to_final.translation
+    ///     TODO: update relationship to show coordinate->index conversions
+    ///
+    xtal::SymOp symop_to_final;
+
+    /// The transformation from mapped to final supercell lattice vectors is
+    /// made according to:
+    ///
+    ///     final_configuration.ideal_lattice().lat_column_mat() =
+    ///         symop_to_final.matrix *
+    ///         final_configuration.ideal_lattice().lat_column_mat() *
+    ///         transformation_matrix_to_final
+    ///
+    Eigen::Matrix3l transformation_matrix_to_final;
+
+    /// Final configuration, symmetrically equivalent to `mapped_configuration`,
+    /// but possibly with a different choice of supercell and permutation.
+    Configuration final_configuration;
+
+    /// Properties, symmetrically equivalent to `mapped_properties`,
+    /// transformed to match `final_configuration`
+    MappedProperties final_properties;
+
+    /// Degree to which the hinted configuration matches final_configuration
     HintStatus hint_status;
+
+    /// Structure mapping score for hinted configuration matches
+    /// final_configuration
     double hint_cost;
+
+    /// Compare using MappingNode (this->mapping)
+    bool operator<(ConfigurationMapping const &other) const {
+      return this->mapping < other.mapping;
+    }
   };
 
   ConfigMapperResult() {}
@@ -227,21 +353,12 @@ struct ConfigMapperResult {
 
   Index n_optimal(double tol = TOL) const;
 
-  // /// Mapped structure, before applying lattice similarity and/or rotation to
-  // /// input structure.
-  // SimpleStructure structure;
+  /// The set of mapping solutions from input structure to configuration
+  std::set<ConfigurationMapping> maps;
 
-  /// The configurations that the input structure mapped onto
-  std::map<MappingNode, Individual> maps;
-
-  /// Failure message if could not map to prim
+  /// Failure message if could not map input structure to prim
   std::string fail_msg;
 };
-
-/// Construct MappedProperties from a single ConfigMapper mapping result
-MappedProperties make_mapped_properties(
-    MappingNode const &_node,
-    ConfigMapperResult::Individual const &_individual_mapping_result);
 
 /// A class for mapping an arbitrary crystal structure as a configuration of a
 /// crystal template as described by a PrimClex.  ConfigMapper manages options
@@ -254,48 +371,17 @@ class ConfigMapper {
  public:
   using HintStatus = ConfigMapperResult::HintStatus;
 
-  ///\brief Construct and initialize a ConfigMapper
-  ///\param _pclex the PrimClex that describes the crystal template
+  /// ConfigMapper constructor
   ///
-  ///\param _strain_weight
-  ///\parblock
-  ///          free parameter 'w' in the cost function: total_cost =
-  ///          w*lattice_deformation+(1-w)*atomic_deformation can vary between 0
-  ///          (completely basis-focused) and 1 (completely lattice-focused)
-  ///\endparblock
+  /// \param _shared_prim The reference structure that input structures should
+  ///   be mapped to
+  /// \param _settings ConfigMapping::Settings, all collected parameters
+  ///   controlling the configuration mapping
+  /// \param _tol tolerance for mapping comparisons (typically,
+  ///   _shared_prim->crystallography_tol())
   ///
-  ///\param _max_volume_change
-  ///\parblock
-  ///          constrains the search space by assuming a limit on allowed volume
-  ///          change only taken into account when non-interstitial vacancies
-  ///          are allowed
-  ///\endparblock
-  ///
-  ///\param _options
-  ///\parblock
-  ///          specify a combination of ConfigMapper::Options using bitwise OR:
-  ///          Ex. _options=ConfigMapper::rotate|ConfigMapper::strict Options
-  ///          are:
-  ///             'rotate': removes rigid rotation of the imported crystal, in a
-  ///             least-squares sense (i.e., yields a symmetric deformation
-  ///             tensor) 'robust': does not assume the imported structure might
-  ///             be ideal ('robust' is much slower for importing ideal
-  ///             structures, but if 'robust' is not
-  ///                       set and a non-ideal structure is passed, this will
-  ///                       be almost always be detected and robust methods will
-  ///                       be used instead. Thus, 'robust' is slightly faster
-  ///                       if imported Structures are *not* ideal)
-  ///             'strict': prevents transformation into canonical form. Tries
-  ///             to preserve original orientation of imported structure if
-  ///             possible
-  ///\endparblock
-  ///
-  ///\param _tol tolerance for mapping comparisons (default is
-  ///_pclex.crystallography_tol())
   ConfigMapper(std::shared_ptr<Structure const> const &_shared_prim,
                ConfigMapping::Settings const &_settings, double _tol);
-
-  // const PrimClex &primclex() const { return *m_pclex; }
 
   std::shared_ptr<Structure const> const &shared_prim() const {
     return m_shared_prim;
@@ -303,54 +389,58 @@ class ConfigMapper {
 
   ConfigMapping::Settings const &settings() const { return m_settings; }
 
-  // void set_primclex(const PrimClex &_pclex) { m_pclex = &_pclex; }
+  xtal::StrucMapper const &struc_mapper() const { return m_struc_mapper; }
 
-  StrucMapper const &struc_mapper() const { return m_struc_mapper; }
-
-  // void add_allowed_lattices(std::vector<std::string> const &_lattice_names);
-
-  void clear_allowed_lattices();
-
-  // STEPS:
-  //    0) [If Hint] Do SimpleStructure -> SimpleStructure(Config) mapping =>
-  //    HintMapping (Default, HintMapping.cost=inf()) 1) If HintMapping.cost>tol
-  //    Do SimpleStructure -> PrimClex mapping => ClexMapping (Default,
-  //    ClexMapping.cost=inf()) 2) If HintMapping.cost<ClexMapping.cost, use
-  //    HintMapping, else use ClexMapping => BestMapping 3) Convert BestMapping
-  //    to ConfigDoF
-  //       [a] - BestMapping attributes that define ConfigDoF are mapped 'DoF',
-  //       all others mapped 'property' [b] - 'property' attributes are subsumed
-  //       into 'relaxation_properties' object
-  //    4) Construct Configuration as ConfigDoF + relation_properties
-
-  ///\brief imports structure specified by '_struc' into primclex()
-  ///\param hint_ptr[in]
-  ///\parblock
-  ///                provides a suggestion for which Configuration _struc should
-  ///                map onto The hint is used to reduce search times, but may
-  ///                be used in the future in combination with Option 'strict'
-  ///                to force mapping onto a particular configuration or be used
-  ///                to provide user reports of the form "Suggested mapping:
-  ///                0.372; Optimal mapping: 0.002"
-  ///\endparblock
+  /// \brief Map structure to prim
   ///
-  ConfigMapperResult import_structure(SimpleStructure const &_struc,
-                                      Configuration const *hint_ptr = nullptr,
-                                      std::vector<DoFKey> const &_hint_dofs = {
-                                          "occ"}) const;
-
-  ConfigMapperResult import_structure(SimpleStructure const &_struc, Index k,
+  /// \param _struc Structure to map to prim
+  /// \param hint_ptr[in]
+  /// \parblock
+  ///                Provides a suggestion for which Configuration _struc should
+  ///                map onto. The hint is used to reduce search times, score
+  ///                the mapping to a particular configuration, and also used
+  ///                in combination with the ConfigMapping::Settings
+  ///                parameter 'strict' to try to map onto a particular
+  ///                orientation of a configuration.
+  /// \endparblock
+  /// \param hint_dofs DoFs to include when structure-mapping `_struc` to a
+  ///   xtal::SimpleStructure constructed from `hint_ptr`.
+  ///
+  ConfigMapperResult import_structure(xtal::SimpleStructure const &_struc,
                                       Configuration const *hint_ptr = nullptr,
                                       std::vector<DoFKey> const &_hint_dofs = {
                                           "occ"}) const;
 
  private:
+  /// Compare configurations
+  HintStatus _make_hint_status(Configuration const *hint_ptr,
+                               Configuration const &final_configuration) const;
+
+  /// Prim structure being mapped to (parent)
   std::shared_ptr<Structure const> m_shared_prim;
 
-  /// Maps the supercell volume to a vector of Lattices with that volume
-  StrucMapper m_struc_mapper;
+  /// Implements the structure mapping
+  xtal::StrucMapper m_struc_mapper;
 
+  /// See ConfigMapping::Settings members for parameter descriptions
   ConfigMapping::Settings m_settings;
+};
+
+class PrimStrucMapCalculator : public xtal::SimpleStrucMapCalculator {
+ public:
+  PrimStrucMapCalculator(xtal::BasicStructure const &_prim,
+                         std::vector<xtal::SymOp> const &symgroup = {},
+                         xtal::SimpleStructure::SpeciesMode _species_mode =
+                             xtal::SimpleStructure::SpeciesMode::ATOM);
+
+ private:
+  /// \brief Make an exact copy of the calculator (including any initialized
+  /// members)
+  xtal::StrucMapCalculatorInterface *_clone() const override {
+    return new PrimStrucMapCalculator(*this);
+  }
+
+  xtal::BasicStructure m_prim;
 };
 
 }  // namespace CASM

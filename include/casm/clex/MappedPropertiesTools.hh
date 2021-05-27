@@ -6,19 +6,21 @@
 
 namespace CASM {
 namespace xtal {
+class BasicStructure;
 class SimpleStructure;
-}
+}  // namespace xtal
 
 struct MappedProperties;
 class PermuteIterator;
+
 ///
 MappedProperties copy_apply(PermuteIterator const &op,
                             MappedProperties const &props);
 
 /// Construct MappedProperties from a mapped SimpleStructure
 MappedProperties make_mapped_properties(
-    xtal::SimpleStructure const &simple_structure,
-    std::set<std::string> const &dof_managed_properties);
+    xtal::SimpleStructure const &mapped_structure,
+    xtal::BasicStructure const &prim);
 
 /// Check if all required properties are included in MappedProperties
 bool has_all_required_properties(

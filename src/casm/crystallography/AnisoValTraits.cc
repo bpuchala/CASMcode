@@ -11,7 +11,7 @@ namespace CASM {
 ///
 /// CASM needs to know how to use crystal properties in several places:
 /// - Site and global properties in xtal::SimpleStructure
-/// - Degrees of freedoms in xtal::BasicStructure through xtal::DoFSet and
+/// - Degrees of freedom (DoF) in xtal::BasicStructure through xtal::DoFSet and
 /// xtal::SiteDoFSet
 /// - Molecule properties in xtal::SpeciesAttribute
 /// - Calculated properties in MappedProperties
@@ -22,9 +22,8 @@ namespace CASM {
 /// - displacement ("disp"): displacement of crystal sites from an ideal
 /// location
 /// - strain ("Ustrain", "GLstrain", etc.): how lattice vectors are transformed
-/// from the ideal
-///   lattice vectors, under various metrics ("Ustrain": stretch tensor,
-///   "GLstrain": Green-Lagrange strain metric, etc.)
+/// from the ideal lattice vectors, under various metrics ("Ustrain": stretch
+/// tensor, "GLstrain": Green-Lagrange strain metric, etc.)
 /// - energy ("energy"): the crystal energy, relative to user chosen reference
 /// states
 /// - force ("force"): forces on atoms present without/with allowing atomic and
@@ -42,13 +41,33 @@ namespace CASM {
 /// - how symmetry operations transform the property value
 /// - etc.
 ///
-/// Note: Traits for all properties are defined using AnisoValTraits, even
+/// Notes:
+/// - Traits for all properties are defined using AnisoValTraits, even
 /// isotropic properties.
+/// - Types used as DoF must also be provided with additional traits
+/// information (such as how to input / output DoF, how to convert between
+/// Configuration, xtal::SimpleStructure, and BasicStructure, and how to build
+/// and evaluate Clexulators) via a derived implementation of DoFType::Traits
+/// (i.e. OccupationDoFTraits, DisplacementDoFTraits, StrainDoFTraits, etc.)
+/// which in turn contain an AnisoValTraits.
 ///
-/// The AnisoValTraits class contains two constructors. One allows defining a
-/// new property type which gets placed in a single static container. The other,
-/// with just a "name" argument, returns a copy of the already existing
-/// AnisoValTraits object for the property type with the given name.
+/// The AnisoValTraits class contains two constructors. One constructor allows
+/// defining a new property type which gets placed in a single static
+/// container. New property types can be made available by default by adding
+/// them to the `make_parsing_dictionary<AnisoValTraits>()` implementation. The
+/// other constructor, with just a "name" argument, returns a copy of the
+/// already existing AnisoValTraits object for the property type with the given
+/// name. The expection is that this construction can be done right at the
+/// point of use, for example when a method must be specialized for global vs
+/// local properties:
+/// \code
+/// if (AnisoValTraits(property_name).global()) {
+//    ... do something for global property types ...
+/// }
+/// else {
+///   ... do something for local property types ...
+/// }
+/// \endcode
 ///
 ///
 /// CASM property naming convention

@@ -92,15 +92,15 @@ StructureMap<Configuration>::map(
   }
 
   for (auto const &map : map_result.maps) {
-    map.second.config.supercell().set_primclex(m_primclex_ptr);
+    map.final_configuration.supercell().set_primclex(m_primclex_ptr);
 
     // insert in database (note that this also/only inserts primitive)
     ConfigInsertResult insert_result =
-        map.second.config.insert(m_primitive_only);
+        map.final_configuration.insert(m_primitive_only);
 
     res.is_new_config = insert_result.insert_canonical;
 
-    res.properties = make_mapped_properties(map.first, map.second);
+    res.properties = map.final_properties;
     res.properties.file_data = p.string();
     res.properties.to = insert_result.canonical_it.name();
     res.properties.origin = p.string();

@@ -596,7 +596,7 @@ int super_command(const CommandArgs &args) {
             configmapper.import_structure(make_simple_structure(super));
 
         if (map_res.success()) {
-          auto insert_res = (map_res.maps.begin()->second).config.insert();
+          auto insert_res = map_res.maps.begin()->final_configuration.insert();
           Configuration imported_config = *insert_res.canonical_it;
 
           if (insert_res.insert_canonical) {

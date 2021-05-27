@@ -6,11 +6,14 @@
 #include "casm/casm_io/container/json_io.hh"
 #include "casm/casm_io/dataformatter/DataFormatter_impl.hh"
 #include "casm/casm_io/json/InputParser_impl.hh"
+#include "casm/casm_io/json/optional.hh"
 #include "casm/clex/ConfigMapping.hh"
 #include "casm/clex/Configuration.hh"
 #include "casm/clex/MappedPropertiesTools.hh"
 #include "casm/clex/PrimClex.hh"
+#include "casm/clex/SimpleStructureTools.hh"
 #include "casm/clex/io/json/ConfigMapping_json_io.hh"
+#include "casm/clex/io/json/Configuration_json_io.hh"
 #include "casm/crystallography/BasicStructure.hh"
 #include "casm/crystallography/SimpleStructure.hh"
 #include "casm/crystallography/SimpleStructureTools.hh"
@@ -49,8 +52,9 @@ std::vector<fs::path> parse_structure_paths(ParentInputParser &parser,
   if (parser.self.contains("structures")) {
     std::vector<fs::path> array_of_paths;
     parser.optional(array_of_paths, "structures");
-    std::copy(array_of_paths.begin(), array_of_paths.end(),
-              std::back_inserter(structure_paths));
+    for (auto const &structure_path : array_of_paths) {
+      structure_paths.push_back(fs::absolute(structure_path));
+    }
   }
 
   // read "batch" file
@@ -62,7 +66,7 @@ std::vector<fs::path> parse_structure_paths(ParentInputParser &parser,
         fs::ifstream batchfile(batch_path);
         fs::path tpath;
         while (batchfile >> tpath) {
-          structure_paths.push_back(tpath);
+          structure_paths.push_back(fs::absolute(tpath));
           batchfile.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
         }
       } catch (std::exception &e) {
@@ -197,10 +201,8 @@ struct StructureImportData {
 /// This will be constructed *after* StructureImportData and
 /// ConfigurationImportData?
 struct MappingImportData {
-  /// Pointer to an element of ConfigMapperResult::maps with results that mapped
-  /// to this configuration - if structure part of current import
-  std::map<xtal::MappingNode, ConfigMapperResult::Individual>::value_type const
-      *mapping_ptr;
+  // /// Set to true for mappings that existed prior to this import batch
+  // bool preexisting = false;
 
   /// Properties determined for this mapping, including the name of
   /// configuration mapped to
@@ -210,37 +212,136 @@ struct MappingImportData {
   bool has_all_required_properties;
 
   /// If all PrimClex required properties exist, this is the tie-breaking score
-  /// as determined by PropertiesDatabase score_method for the configuration
-  /// this object describes the mapping to
-  std::optional<double> mapped_properties_score;
+  /// as determined by the score_method for the configuration this object
+  /// describes the mapping to. Only has value if `has_all_required_properties`
+  /// is true.
+  std::optional<double> properties_score;
 
+  /// MappingImportData are compared primarily by comparing
+  /// `properties_score`. Any Mapping that `has_all_required_properties`
+  /// compares less than any that does not.
   bool operator<(MappingImportData const &other) const {
-    if (this->mapped_properties_score.has_value() &&
-        other.mapped_properties_score.has_value()) {
-      return this->mapped_properties_score.value() <
-             other.mapped_properties_score.value();
-    } else if (this->mapped_properties_score.has_value()) {
+    if (this->properties_score.has_value() &&
+        other.properties_score.has_value()) {
+      return this->properties_score.value() < other.properties_score.value();
+    } else if (this->properties_score.has_value()) {
       return true;
-    } else if (other.mapped_properties_score.has_value()) {
+    } else if (other.properties_score.has_value()) {
       return false;
     } else {
-      // compare MappingNode
-      return this->mapping_ptr->first < other.mapping_ptr->first;
+      // fallback: compare total mapping cost
+      return this->properties.scalar("total_cost") <
+             other.properties.scalar("total_cost");
     }
   }
 };
 
 struct ConfigurationImportData {
-  /// Insert configurations and hold the result here. Depending on
-  /// ImportSettings, changes may not be committed.
+  /// Insert configurations into the configuration database and hold the result
+  /// here. Depending on ImportSettings, changes may not be committed.
   ConfigInsertResult insert_result;
 
   /// Include currently imported and existing imported structures that map to
   /// this configuration
   std::set<MappingImportData> mappings;
+
+  /// Method used to calculate the properties_score of successful mappings. This
+  /// determines which successful mappings to this configuration is considered
+  /// the best (best is lowest score).
+  ScoreMappedProperties mapped_properties_score_method;
 };
 
 }  // namespace import_configurations_impl
+
+// COORD_TYPE coordinate_mode
+
+jsonParser &to_json(
+    const import_configurations_impl::StructureImportData &structure_data,
+    jsonParser &json, COORD_TYPE coordinate_mode) {
+  to_json(structure_data.structure_path.string(), json["structure_path"]);
+  to_json(structure_data.structure, json["structure"], {},
+          coordinate_mode);  // unmapped structure
+  to_json(structure_data.mapping_result, json["mapping_result"],
+          coordinate_mode);
+
+  return json;
+}
+
+jsonParser &to_json(
+    const import_configurations_impl::MappingImportData &mapping_data,
+    jsonParser &json) {
+  to_json(mapping_data.properties, json["properties"]);
+  to_json(mapping_data.has_all_required_properties,
+          json["has_all_required_properties"]);
+  to_json(mapping_data.properties_score, json["properties_score"]);
+  // to_json(mapping_data.preexisting, json["preexisting"]);
+
+  return json;
+}
+
+jsonParser &to_json(
+    const import_configurations_impl::ConfigurationImportData &config_data,
+    jsonParser &json, DB::Database<Configuration> const &configuration_db,
+    COORD_TYPE coordinate_mode) {
+  if (config_data.insert_result.canonical_it != configuration_db.end()) {
+    Configuration const &canonical_configuration =
+        *config_data.insert_result.canonical_it;
+    to_json(canonical_configuration, json["canonical_configuration"]);
+    to_json(canonical_configuration.name(),
+            json["canonical_configuration_name"]);
+    to_json(config_data.insert_result.insert_canonical,
+            json["canonical_configuration_is_new"]);
+  }
+
+  Configuration const &primitive_configuration =
+      *config_data.insert_result.primitive_it;
+
+  to_json(primitive_configuration, json["primitive_configuration"]);
+  to_json(primitive_configuration.name(), json["primitive_configuration_name"]);
+  to_json(config_data.insert_result.insert_primitive,
+          json["primitive_configuration_is_new"]);
+
+  if (config_data.mappings.size()) {
+    json["mappings"] = jsonParser::array();
+    for (auto const &mapping : config_data.mappings) {
+      jsonParser mapping_json;
+      to_json(mapping, mapping_json);
+
+      if (config_data.insert_result.canonical_it != configuration_db.end()) {
+        Configuration const &canonical_configuration =
+            *config_data.insert_result.canonical_it;
+
+        xtal::SimpleStructure simple_structure = make_simple_structure(
+            canonical_configuration.supercell(),
+            canonical_configuration.configdof(), mapping.properties, {}, false);
+
+        xtal::SimpleStructure simple_structure_relaxed = make_simple_structure(
+            canonical_configuration.supercell(),
+            canonical_configuration.configdof(), mapping.properties, {}, true);
+
+        to_json(simple_structure, mapping_json["structure"], {},
+                coordinate_mode);
+        to_json(simple_structure_relaxed, mapping_json["relaxed_structure"], {},
+                coordinate_mode);
+      }
+      json["mappings"].push_back(mapping_json);
+    }
+  }
+
+  to_json(config_data.mapped_properties_score_method,
+          json["properties_score_method"]);
+
+  return json;
+}
+
+void check_equal(Eigen::MatrixXd const &A, Eigen::MatrixXd const &B,
+                 std::string message) {
+  if (!almost_equal(A, B)) {
+    std::cout << "A: \n" << A << std::endl;
+    std::cout << "B: \n" << B << std::endl << std::endl;
+    throw std::runtime_error(message);
+  }
+}
 
 void ImportConfigurations::run(PrimClex &primclex,
                                jsonParser const &json_options,
@@ -265,6 +366,8 @@ void ImportConfigurations::run(PrimClex &primclex,
       primclex.settings().required_properties(traits<Configuration>::name,
                                               calctype);
 
+  COORD_TYPE coordinate_mode_for_structure_output = CART;
+
   ParentInputParser parser =
       make_import_parent_parser(log, json_options, cli_options_as_json);
   std::runtime_error error_if_invalid{
@@ -283,9 +386,9 @@ void ImportConfigurations::run(PrimClex &primclex,
   report_and_throw_if_invalid(parser, log, error_if_invalid);
 
   // std::cout << "showing structures:\n";
-  // for (auto const &pair : structures) {
-  //   fs::path path = pair.first;
-  //   xtal::SimpleStructure const &simple_structure = pair.second;
+  // for (auto const &value : structures) {
+  //   fs::path path = value.first;
+  //   xtal::SimpleStructure const &simple_structure = value.second;
   //
   //   std::cout << path << ":" << std::endl;
   //   jsonParser json;
@@ -322,9 +425,9 @@ void ImportConfigurations::run(PrimClex &primclex,
 
   log.custom("Mapping structures");
   std::map<fs::path, StructureImportData> structure_import_data;
-  for (auto const &pair : structures) {
-    fs::path path = pair.first;
-    xtal::SimpleStructure const &simple_structure = pair.second;
+  for (auto const &value : structures) {
+    fs::path path = value.first;
+    xtal::SimpleStructure const &simple_structure = value.second;
 
     log << "Working on " << path << std::endl;
 
@@ -341,6 +444,65 @@ void ImportConfigurations::run(PrimClex &primclex,
   }
   log << "DONE" << std::endl << std::endl;
 
+  for (auto const &value : structure_import_data) {
+    fs::path structure_path = value.first;
+    StructureImportData const &structure_data = value.second;
+    xtal::SimpleStructure const &unmapped_child = structure_data.structure;
+
+    std::cout << "origin: " << value.first.string()
+              << "  mappings: " << value.second.mapping_result.maps.size()
+              << std::endl;
+    jsonParser json;
+    to_json(value.second, json, coordinate_mode_for_structure_output);
+    std::cout << json << std::endl << std::endl;
+
+    ConfigMapperResult const &mapping_result = structure_data.mapping_result;
+    for (auto const &mapping : mapping_result.maps) {
+      // collect data
+      xtal::SimpleStructure const &unmapped_child = mapping.unmapped_child;
+      xtal::MappingNode const &mapping_node = mapping.mapping;
+      xtal::LatticeNode const &lattice_node = mapping_node.lattice_node;
+      xtal::SimpleStructure const &mapped_child = mapping.mapped_child;
+      Configuration const &mapped_configuration = mapping.mapped_configuration;
+      Configuration const &final_configuration = mapping.final_configuration;
+      // xtal::SimpleStructure const &resolved_struc = indiv.resolved_struc;
+
+      // // LatticeNode:
+      // // parent == stretch * isometry * unmapped_child
+      // // LatticeMap: unmapped_child == deformation_gradient*parent*N
+      // //   parent * N = deformation_gradient.inverse * unmapped_child
+      // // paper: S_1*N == L_1*T_1*N == V_N * Q_N * L_2
+      //
+      // // relationships that should hold:
+      // // 1) S1 == lattice_node.stretch * lattice_node.isometry * L2
+      //
+      // StrucMapper results
+
+      check_equal(mapped_configuration.ideal_lattice().lat_column_mat(),
+                  lattice_node.parent.superlattice().lat_column_mat(),
+                  "ImportConfigurations check -2a");
+
+      check_equal(mapped_configuration.ideal_lattice().lat_column_mat(),
+                  lattice_node.stretch * lattice_node.isometry *
+                      unmapped_child.lat_column_mat *
+                      lattice_node.child.transformation_matrix_to_super()
+                          .cast<double>(),
+                  "ImportConfigurations check -2b");
+
+      check_equal(lattice_node.parent.superlattice().lat_column_mat(),
+                  lattice_node.stretch * lattice_node.isometry *
+                      unmapped_child.lat_column_mat *
+                      lattice_node.child.transformation_matrix_to_super()
+                          .cast<double>(),
+                  "ImportConfigurations check 0");
+
+      // ConfigMapper results
+      check_equal(mapped_child.lat_column_mat,
+                  lattice_node.isometry * unmapped_child.lat_column_mat,
+                  "check 1");
+    }
+  }
+
   // input:
   // - structure_import_data
   // - primitive configs?
@@ -355,15 +517,15 @@ void ImportConfigurations::run(PrimClex &primclex,
   Index successful_mappings = 0;
   Index failed_mappings = 0;
   Index structures_with_multiple_optimal_mappings = 0;
-  for (auto const &pair : structure_import_data) {
-    fs::path structure_path = pair.first;
-    StructureImportData const &structure_data = pair.second;
+  for (auto const &value : structure_import_data) {
+    fs::path structure_path = value.first;
+    StructureImportData const &structure_data = value.second;
     ConfigMapperResult const &mapping_result = structure_data.mapping_result;
 
     if (mapping_result.success()) {
       successful_mappings++;
       if (mapping_result.n_optimal() > 1) {
-        // should this fail?
+        // should this be a failure?
         structures_with_multiple_optimal_mappings++;
       }
     } else {
@@ -372,11 +534,12 @@ void ImportConfigurations::run(PrimClex &primclex,
     }
 
     for (auto const &mapping : mapping_result.maps) {
-      xtal::MappingNode const &mapping_node = mapping.first;
-      ConfigMapperResult::Individual const &indiv = mapping.second;
+      xtal::MappingNode const &mapping_node = mapping.mapping;
+      Configuration const &final_configuration = mapping.final_configuration;
+      MappedProperties const &final_properties = mapping.final_properties;
 
       ConfigInsertResult insert_result = make_canonical_and_insert(
-          indiv.config, supercell_db, configuration_db,
+          final_configuration, supercell_db, configuration_db,
           import_settings.primitive_only);
 
       // find existing or create new ConfigurationImportData
@@ -387,15 +550,21 @@ void ImportConfigurations::run(PrimClex &primclex,
             config_import_data
                 .emplace(*insert_result.canonical_it, ConfigurationImportData())
                 .first;
+
+        // these should only be set once, the first time the configuration is
+        // found and ConfigurationImportData constructed
+        it->second.insert_result = insert_result;
+        it->second.mapped_properties_score_method =
+            properties_db.score_method(insert_result.canonical_it->name());
+
+        // get preexisting mappings?
       }
       Configuration const &config = it->first;
       ConfigurationImportData &_cdata = it->second;
-      _cdata.insert_result = insert_result;
 
-      // Construct and store mapping data
+      // Construct and store mapping data for each mapping
       MappingImportData _mdata;
-      _mdata.mapping_ptr = &mapping;
-      _mdata.properties = make_mapped_properties(mapping_node, indiv);
+      _mdata.properties = final_properties;
       _mdata.properties.to = config.name();
       _mdata.properties.origin = structure_path.string();
       _mdata.properties.file_data = structure_path.string();
@@ -404,7 +573,8 @@ void ImportConfigurations::run(PrimClex &primclex,
           has_all_required_properties(_mdata.properties, required_properties);
 
       if (_mdata.has_all_required_properties) {
-        _mdata.mapped_properties_score = properties_db.score(_mdata.properties);
+        _mdata.properties_score =
+            _cdata.mapped_properties_score_method(_mdata.properties);
       }
 
       _cdata.mappings.insert(_mdata);
@@ -432,6 +602,10 @@ void ImportConfigurations::run(PrimClex &primclex,
   for (auto const &value : config_import_data) {
     std::cout << "config: " << value.first.name()
               << "  mappings: " << value.second.mappings.size() << std::endl;
+    jsonParser json;
+    to_json(value.second, json, configuration_db,
+            coordinate_mode_for_structure_output);
+    std::cout << json << std::endl << std::endl;
   }
 }
 

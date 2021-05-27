@@ -107,26 +107,24 @@ std::vector<Eigen::Vector3d> SimpleStrucMapCalculator::translations(
 /// unit cell
 SimpleStructure SimpleStrucMapCalculator::resolve_setting(
     MappingNode const &_node, SimpleStructure const &_child_struc) const {
-  SimpleStructure::Info const &c_info(_child_struc.atom_info);
-  SimpleStructure::Info const &p_info((this->parent()).mol_info);
+  SimpleStructure::Info const &child_atom_info(_child_struc.atom_info);
+  SimpleStructure::Info const &parent_mol_info((this->parent()).mol_info);
   auto const &cgrid = _node.lattice_node.child;
   auto const &pgrid = _node.lattice_node.parent;
 
-  Index csize = c_info.size();
+  Index csize = child_atom_info.size();
 
   SimpleStructure result;
 
   // Resolve setting of deformed lattice vectors
   // Symmetric deformation of parent lattice that takes it to de-rotated child
   // lattice:
-  Eigen::Matrix3d U =
-      (_node.lattice_node.stretch)
-          .inverse();  // * _node.lattice_node.isometry).inverse();
+  Eigen::Matrix3d U = (_node.lattice_node.stretch).inverse();
   result.lat_column_mat = U * pgrid.superlattice().lat_column_mat();
 
   // Match number of sites in result to number of sites in supercell of parent
-  SimpleStructure::Info &r_info(result.mol_info);
-  r_info.resize(_node.mol_map.size());
+  SimpleStructure::Info &result_mol_info(result.mol_info);
+  result_mol_info.resize(_node.mol_map.size());
 
   Eigen::MatrixXd mol_displacement;
   mol_displacement.setZero(3, _node.mol_map.size());
@@ -136,25 +134,26 @@ SimpleStructure SimpleStrucMapCalculator::resolve_setting(
 
   // transform and expand the coordinates of child to fill the resolved
   // structure
+
+  /// mol_map[i] lists atom indices of parent superstructure that comprise the
+  /// molecule at its i'th molecular site
   {
-    for (Index i = 0; i < _node.mol_map.size(); ++i) {
+    for (Index i = 0; i < _node.mol_map.size(); ++i) {  // i: site index
       std::set<Index> const &mol = _node.mol_map[i];
 
-      for (Index j : mol) {
+      for (Index j : mol) {  // j: indices of atoms in molecule on site i
         if (_node.atom_permutation[j] < (csize * cgrid.size())) {
           mol_displacement.col(i) +=
               _node.atom_displacement.col(j) / double(mol.size());
 
-          r_info.names[i] =
-              _node.mol_labels[i]
-                  .first;  //_child_struc.mol_info.names[j / cgrid.size()];
+          result_mol_info.names[i] = _node.mol_labels[i].first;
         } else if (mol.size() > 1)
           throw std::runtime_error(
               "SimpleStrucMapCalculator found multi-atom molecule with "
               "vacancy. This should not occur");
       }
-      r_info.cart_coord(i) =
-          U * (p_info.cart_coord(i / pgrid.size()) +
+      result_mol_info.cart_coord(i) =
+          U * (parent_mol_info.cart_coord(i / pgrid.size()) +
                Local::_make_superlattice_coordinate(i % pgrid.size(), pgrid,
                                                     parent_index_to_unitcell)
                    .const_cart() +
@@ -173,17 +172,18 @@ SimpleStructure SimpleStrucMapCalculator::resolve_setting(
   }
 
   // site properties second
-  for (auto const &el : c_info.properties) {
+  for (auto const &el : child_atom_info.properties) {
     AnisoValTraits ttraits(el.first);
     Eigen::MatrixXd trans = AnisoValTraits(el.first).symop_to_matrix(
         _node.lattice_node.isometry, U * _node.atomic_node.translation,
         _node.atomic_node.time_reversal);
     Eigen::MatrixXd tprop = trans * el.second;
 
-    auto it = r_info.properties
-                  .emplace(el.first, Eigen::MatrixXd::Zero(el.second.rows(),
-                                                           r_info.size()))
-                  .first;
+    auto it =
+        result_mol_info.properties
+            .emplace(el.first, Eigen::MatrixXd::Zero(el.second.rows(),
+                                                     result_mol_info.size()))
+            .first;
     for (Index i = 0; i < _node.mol_map.size(); ++i) {
       for (Index j : _node.mol_map[i]) {
         Index k = _node.atom_permutation[j];
@@ -199,7 +199,7 @@ SimpleStructure SimpleStrucMapCalculator::resolve_setting(
 
   // Add new local property -- site displacement of child relative to parent, at
   // parent strain state
-  r_info.properties["disp"] = mol_displacement;
+  result_mol_info.properties["disp"] = mol_displacement;
 
   // Add new global property -- right stretch tensor of child relative to
   // parent:
@@ -269,7 +269,9 @@ void SimpleStrucMapCalculator::finalize(
           sym_removed_disp -
           projected_comp * supercell_sym_invariant_modes[sym_idx];
     }
-    node.atom_displacement = sym_removed_disp;
+    node.atom_displacement =
+        sym_removed_disp;  // TODO: BP: I don't think this should overwrite
+                           // `atom_displacement` permanently
     node.atomic_node.cost =
         StrucMapping::atomic_cost(node, this->struc_info(_child_struc).size());
     node.atomic_node.cost_method = "symmetry_breaking_displacement_cost";

@@ -22,7 +22,7 @@ template <>
 ParsingDictionary<AnisoValTraits> make_parsing_dictionary<AnisoValTraits>();
 
 /// \brief Specifies traits of (possibly) anisotropic crystal properties
-class AnisoValTraits {
+class AnisoValTraits {  // Note: full class documentation in AnisoValTraits.cc
  public:
   static const unsigned char LOCAL = 0;
   static const unsigned char GLOBAL = (1u << 0);

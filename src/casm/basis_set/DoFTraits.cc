@@ -22,6 +22,54 @@
 
 namespace CASM {
 
+/// \class DoFType::Traits
+/// \brief Collection of all the traits specific to a DoF type
+///
+/// Types used as DoF must also be provided with additional traits beyond what
+/// is specified in AnisoValTraits:
+/// - how to input / output DoF
+/// - how to convert between Configuration, xtal::SimpleStructure, and
+/// BasicStructure
+/// - how to build and evaluate Clexulators
+/// - etc.
+///
+/// DoFType::Traits is an abstract base class which must be inherited by DoF
+/// traits implementations, for example:
+/// - OccupationDoFTraits
+/// - DisplacementDoFTraits
+/// - StrainDoFTraits
+/// - etc.
+///
+/// To make an implemented DoF type available for use, an instance must be
+/// constructed and "registered" using `DoFType::register_traits`. Usually
+/// this should be done by adding it to the
+/// `make_parsing_dictionary<DoFType::Traits>()` implementation in DoFTraits.cc,
+/// which is used to populate the default DoF traits dictionary.
+///
+/// After a DoFType::Traits instance is registered, it can be accessed using:
+/// \code
+///     DoFType::traits(dofname)
+/// \endcode
+/// which will find DoFType::Traits by DoF type name. The expection is that
+/// this lookup is done just prior to the point of use.
+///
+/// Current DoF types implemented and available by default are:
+/// - "occ": occupation
+/// - "disp": displacement
+/// - "EAstrain": Euler-Almansi strain
+/// - "Hstrain": Hencky strain
+/// - "GLstrain": Green-Lagrange strain
+/// - "Cmagspin": Collinear magnetic spin
+/// - "Cunitmagspin": Collinear magnetic spin, constrained to unit length
+/// - "NCmagspin": Non-collinear magnetic spin, without spin-orbit
+///   coupling
+/// - "NCunitmagspin": Non-collinear magnetic spin, without spin-orbit
+///   coupling, constrained to unit length
+/// - "SOmagspin": Non-collinear magnetic spin, with spin-orbit coupling
+/// - "SOunitmagspin": Non-collinear magnetic spin, with spin-orbit coupling,
+///   constrained to unit length
+///
+
 template <>
 DoFType::TraitsDictionary make_parsing_dictionary<DoFType::Traits>() {
   DoFType::TraitsDictionary dict;
@@ -51,10 +99,24 @@ DoF::BasicTraits const &basic_traits(std::string const &dof_key) {
   return traits(dof_key).val_traits();
 }
 
-/// \brief Retrieve the standard values for a DoF from dictionary of properties
-/// from a SimpleStructure or MappedProperties object
-///  Returns matrix with standard values, and names of properties that were used
-///  to construct the matrix
+/// \brief Retrieve the standard values for a DoF from dictionary of
+/// properties from xtal::SimpleStructure or MappedProperties
+///
+/// Returns standard values, and names of properties that were
+/// used to construct the values. This method allows for cases such
+/// as strain values, where the strain reported for the structure might be
+/// provided as "Ustrain", but this object needs to recognize "Ustrain" and
+/// convert it to "GLstain" because "GLstrain" is being used as a DoF.
+///
+/// Expected behavior:
+/// - If no value is found: throw std::runtime_error
+/// - If multiple values exist: returns first found
+///
+/// TODO:
+/// - update documentation to describe what case would require multiple
+/// property names? currently only one is ever returned.
+/// - should `no value found` be an exception? should this check for multiple
+/// conflicting values?
 std::pair<Eigen::MatrixXd, std::set<std::string> > Traits::find_values(
     std::map<std::string, Eigen::MatrixXd> const &values) const {
   std::pair<Eigen::MatrixXd, std::set<std::string> > result;

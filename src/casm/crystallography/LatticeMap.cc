@@ -142,12 +142,35 @@ std::string StrainCostCalculator::cost_method() const {
   if (m_sym_cost) {
     return "anisotropic_strain_cost";
   } else {
-    return "isotropic_strain_cost";
+    return "strain_cost";
   }
 }
 
 //*******************************************************************************************
 
+/// LatticeMap constructor
+///
+/// \param _parent Reference lattice (L1 * T1)
+/// \param _child Lattice to be mapped to _parent (L2)
+/// \param num_atoms Unused. (TODO: remove)
+/// \param _range Determines range of N matrices to be searched when optimizing
+/// the lattice mapping. The absolute value of an element of N is not allowed be
+/// be greater than `_range`. Typically 1 is a good enough choice. \param
+/// _parent_point_group Point group of the parent (i.e. crystal point group),
+/// used to identify canonical N matrices and reduce the number of operations.
+/// Also used to calculate the symmetry-breaking strain cost if
+/// `_symmetrize_strain_cost==true`. \param _child_point_group Point group of
+/// the child (structure), used to identify canonical N matrices and reduce the
+/// number of operations. (TODO: seems to typically just be
+/// {SymOp::identity()}?) \param strain_gram_mat Gram matrix, may be used to
+/// calculate an anisotropic strain cost. Use default value
+/// Eigen::MatrixXd::Identity(9, 9) otherwise. \param _init_better_than
+/// Initializes the LatticeMap to the first mapping with a cost less than
+/// `_init_better_than + _xtal_tol`. Use the default value (1e20) to initialize
+/// to the first valid mapping. \param _symmetrize_strain_cost Boolean flag
+/// (default=false), which if true indicates that the `strain-breaking strain
+/// cost` should be used to score lattice mappings. \param _xtal_tol Tolerance
+/// used for crystallography comparisons
 LatticeMap::LatticeMap(const Lattice &_parent, const Lattice &_child,
                        Index num_atoms, int _range,
                        SymOpVector const &_parent_point_group,
@@ -155,7 +178,9 @@ LatticeMap::LatticeMap(const Lattice &_parent, const Lattice &_child,
                        Eigen::Ref<const Eigen::MatrixXd> const &strain_gram_mat,
                        double _init_better_than /* = 1e20 */,
                        bool _symmetrize_strain_cost, double _xtal_tol)
-    : m_calc(strain_gram_mat),
+    : m_parent(_parent.lat_column_mat()),
+      m_child(_child.lat_column_mat()),
+      m_calc(strain_gram_mat),
       m_vol_factor(pow(std::abs(volume(_child) / volume(_parent)), 1. / 3.)),
       m_range(_range),
       m_cost(1e20),
@@ -163,15 +188,15 @@ LatticeMap::LatticeMap(const Lattice &_parent, const Lattice &_child,
       m_symmetrize_strain_cost(_symmetrize_strain_cost),
       m_xtal_tol(_xtal_tol) {
   Lattice reduced_parent = _parent.reduced_cell();
-  m_parent = reduced_parent.lat_column_mat();
+  m_reduced_parent = reduced_parent.lat_column_mat();
 
   Lattice reduced_child = _child.reduced_cell();
-  m_child = reduced_child.lat_column_mat();
+  m_reduced_child = reduced_child.lat_column_mat();
 
   m_transformation_matrix_to_reduced_parent =
-      _parent.inv_lat_column_mat() * m_parent;
+      _parent.inv_lat_column_mat() * m_reduced_parent;
   m_transformation_matrix_to_reduced_child_inv =
-      m_child.inverse() * _child.lat_column_mat();
+      m_reduced_child.inverse() * _child.lat_column_mat();
 
   if (_range == 1)
     m_mvec_ptr = &unimodular_matrices<1>();
@@ -224,7 +249,7 @@ LatticeMap::LatticeMap(const Lattice &_parent, const Lattice &_child,
     }
   }
 
-  reset(_init_better_than);
+  _reset(_init_better_than);
 }
 
 LatticeMap::LatticeMap(Eigen::Ref<const LatticeMap::DMatType> const &_parent,
@@ -239,13 +264,13 @@ LatticeMap::LatticeMap(Eigen::Ref<const LatticeMap::DMatType> const &_parent,
                  _parent_point_group, _child_point_group, strain_gram_mat,
                  _init_better_than, _symmetrize_strain_cost, _xtal_tol) {}
 
-//*******************************************************************************************
-void LatticeMap::reset(double _better_than) {
+void LatticeMap::_reset(double _better_than) {
   m_currmat = 0;
 
   // From relation F * parent * inv_mat.inverse() = child
-  m_deformation_gradient = m_child * inv_mat().cast<double>() *
-                           m_parent.inverse();  // -> _deformation_gradient
+  m_deformation_gradient =
+      m_reduced_child * inv_mat().cast<double>() *
+      m_reduced_parent.inverse();  // -> _deformation_gradient
 
   double tcost = calc_strain_cost(m_deformation_gradient);
 
@@ -259,44 +284,6 @@ void LatticeMap::reset(double _better_than) {
   } else
     next_mapping_better_than(_better_than);
 }
-//*******************************************************************************************
-/*
- *  For L_child = (*this).lat_column_mat() and L_parent =
- * _parent_lat.lat_column_mat(), we find the mapping:
- *
- *        L_child = _deformation_gradient * L_parent * N      -- (Where 'N' is
- * an integer matrix of determinant=1)
- *
- *  That minimizes the cost function:
- *
- *        C = pow((*this).volume(),2/3) *
- * trace(E_dev.transpose()*E_dev.transpose()) / 4
- *
- *  Where E_dev is the non-volumetric component of the green-lagrange strain
- *
- *        E_dev = E - trace(E/3)*Identity   -- (such that E_dev is traceless)
- *
- *  where the Green-Lagrange strain is
- *
- *        E =
- * (_deformation_gradient.transpose()*_deformation_gradient-Identity)/2
- *
- *  The cost function approximates the mean-square-displacement of a point in a
- * cube of volume (*this).volume() when it is deformed by deformation matrix
- * '_deformation_gradient', but neglecting volumetric effects
- *
- *  The algorithm proceeds by counting over 'N' matrices (integer matrices of
- * determinant 1) with elements on the interval (-2,2). (we actually count over
- * N.inverse(), because....)
- *
- *  The green-lagrange strain for that 'N' is then found using the relation
- *
- *        _deformation_gradient.transpose()*_deformation_gradient =
- * L_parent.inverse().transpose()*N.inverse().transpose()*L_child.transpose()*L_child*N.inverse()*L_parent.inverse()
- *
- *  The minimal 'C' is returned at the end of the optimization.
- */
-//*******************************************************************************************
 
 const LatticeMap &LatticeMap::best_strain_mapping() const {
   m_currmat = 0;
@@ -307,7 +294,8 @@ const LatticeMap &LatticeMap::best_strain_mapping() const {
   // m_dcache -> value of inv_mat() that gives m_N = identity;
   m_dcache = m_transformation_matrix_to_reduced_child_inv *
              m_transformation_matrix_to_reduced_parent;
-  m_deformation_gradient = m_child * m_dcache * m_parent.inverse();
+  m_deformation_gradient =
+      m_reduced_child * m_dcache * m_reduced_parent.inverse();
 
   double best_cost = calc_strain_cost(m_deformation_gradient);
 
@@ -319,7 +307,12 @@ const LatticeMap &LatticeMap::best_strain_mapping() const {
   return *this;
 }
 
-//*******************************************************************************************
+/// \brief Use the current strain cost method (determined by constructor
+/// arguments) to calculate the strain cost of a deformation
+///
+/// \param deformation_gradient Parent to child deformation gradient,
+///    F_rev^{N}, where F_rev^{N} * (L1 * T1) * N == L2.
+///
 double LatticeMap::calc_strain_cost(
     const Eigen::Matrix3d &deformation_gradient) const {
   if (symmetrize_strain_cost())
@@ -330,7 +323,8 @@ double LatticeMap::calc_strain_cost(
 
 /// The name of the method used to calculate the lattice deformation cost
 ///
-/// \returns "" or "symmetry_breaking_strain_cost" or ""
+/// \returns "strain_cost", "anisotropic_strain_cost", or
+///   "symmetry_breaking_strain_cost", as determined by constructor arguments
 ///
 std::string LatticeMap::cost_method() const {
   if (symmetrize_strain_cost()) {
@@ -340,17 +334,15 @@ std::string LatticeMap::cost_method() const {
   }
 }
 
-//*******************************************************************************************
-
+/// \brief Iterate until the next solution (N, F^{N}) with lattice mapping
+/// score less than `max_cost` is found.
 const LatticeMap &LatticeMap::next_mapping_better_than(double max_cost) const {
   m_cost = 1e20;
   return _next_mapping_better_than(max_cost);
 }
 
-//*******************************************************************************************
-// Implements the algorithm as above, with generalized inputs:
-//       -- m_inv_count saves the state between calls
-//       -- the search breaks when a mapping is found with cost < max_cost
+/// \brief Iterate until the next solution (N, F^{N}) with lattice mapping
+/// score less than `max_cost` is found.
 const LatticeMap &LatticeMap::_next_mapping_better_than(double max_cost) const {
   DMatType init_deformation_gradient(m_deformation_gradient);
   // tcost initial value shouldn't matter unles m_inv_count is invalid
@@ -362,8 +354,9 @@ const LatticeMap &LatticeMap::_next_mapping_better_than(double max_cost) const {
     }
 
     // From relation _deformation_gradient * parent * inv_mat.inverse() = child
-    m_deformation_gradient = m_child * inv_mat().cast<double>() *
-                             m_parent.inverse();  // -> _deformation_gradient
+    m_deformation_gradient =
+        m_reduced_child * inv_mat().cast<double>() *
+        m_reduced_parent.inverse();  // -> _deformation_gradient
     tcost = calc_strain_cost(m_deformation_gradient);
     if (std::abs(tcost) < (std::abs(max_cost) + std::abs(xtal_tol()))) {
       m_cost = tcost;
@@ -379,8 +372,8 @@ const LatticeMap &LatticeMap::_next_mapping_better_than(double max_cost) const {
             m_transformation_matrix_to_reduced_child_inv;
       // std::cout << "N:\n" << m_N << "\n";
       //  We already have:
-      //        m_deformation_gradient = m_child * inv_mat().cast<double>() *
-      //        m_parent.inverse();
+      //        m_deformation_gradient = m_reduced_child *
+      //        inv_mat().cast<double>() * m_reduced_parent.inverse();
       break;
     }
   }
@@ -397,8 +390,7 @@ const LatticeMap &LatticeMap::_next_mapping_better_than(double max_cost) const {
   return *this;
 }
 
-//*******************************************************************************************
-
+/// Returns true if current N matrix is the canonical equivalent
 bool LatticeMap::_check_canonical() const {
   // Purpose of jmin is to exclude (i,j)=(0,0) element
   // jmin is set to 0 at end of i=0 pass;

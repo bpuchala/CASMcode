@@ -111,7 +111,6 @@ bool StrucScore::parse_args(const std::string &args) {
 
 /// \brief If not yet initialized, use the default clexulator from the PrimClex
 bool StrucScore::init(const Configuration &_tmplt) const {
-  PrimClex const &pclex(_tmplt.primclex());
   m_altprim.reset(
       new BasicStructure(read_prim(m_prim_path, _tmplt.crystallography_tol())));
 
@@ -153,7 +152,7 @@ std::string StrucScore::short_header(const Configuration &_tmplt) const {
 
 //****************************************************************************************
 Eigen::VectorXd StrucScore::evaluate(const Configuration &_config) const {
-  SimpleStructure relaxed_struc;
+  xtal::SimpleStructure relaxed_struc;
 
   from_json(relaxed_struc, jsonParser(_calc_properties_path(_config)));
 
@@ -164,7 +163,7 @@ Eigen::VectorXd StrucScore::evaluate(const Configuration &_config) const {
     return result_vec;
   }
 
-  MappingNode const &mapping(*result.begin());
+  xtal::MappingNode const &mapping(*result.begin());
 
   for (Index i = 0; i < m_prop_names.size(); i++) {
     if (m_prop_names[i] == "basis_score") {

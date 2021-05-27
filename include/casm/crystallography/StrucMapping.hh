@@ -30,6 +30,21 @@ class StrucMapper;
 
 namespace StrucMapping {
 
+// TODO:
+// - Pass all StrucMapper parameters via constructor or via
+// `map_X` function call and remove StrucMapper parameter modifiers such as
+// `StrucMapper::set_filter` or `StrucMapper::set_max_va_frac`.
+// - For `map_X` functions, document more clearly what parameters effect the
+// superlattices considered for mapping. For example, is it clear that
+// `map_ideal_struc` and `map_deformed_struc_impose_lattice_node` ignore the
+// min_va_frac, max_va_frac, and lattice filter parameters but
+// `map_deformed_struc_impose_lattice_vols` does not ignore them? Which `map_X`
+// methods use lattices added by `add_allowed_lattice`?
+// - Remove StrucMapping::Options, only robust and soft_va_limit seems to
+// still be in use
+// - Find an alternative to the use of StrucMapCalculatorInterface, or reduce
+// it to only the virtual members and make it optional.
+
 /// Lattice filter function for structure mapping
 ///
 /// The filter function is of the form
@@ -93,72 +108,51 @@ double atomic_cost(
 }  // namespace StrucMapping
 
 /// \brief Class describing the lattice-mapping portion of a particular mapping
-/// A general map for child_struc onto parent_struc may require forming a
-/// supercell of parent_struc (most commonly) and/or of child_struc. As such,
-/// the LatticeNode is specified in terms of superlattices of both parent_struc
-/// and child_struc, as well as deformation and rotation information sufficient
-/// to fully define the lattice map
-struct LatticeNode {
-  /// \brief stretch tensor that takes child superlattice from its de-rotated,
-  /// deformed state to its ideal, parent-mapped state We utilize a convention
-  /// in which 'stretch' is applied *after* 'isometry', so 'stretch' is the
-  /// *left* stretch tensor
+struct LatticeNode {  // Note: See full description in StrucMapping.cc
+
+  /// This is V^{N}, the stretch matrix, a symmetric matrix that describes the
+  /// deformation that maps a de-rotated child superlattice to a parent
+  /// superlattice.
   Eigen::Matrix3d stretch;
 
-  /// \brief cartesian rotation/reflection/rotoreflection that rotates the child
-  /// superlattice to its de-rotated, deformed state
+  /// This is Q^{N}, the isometry matrix, which describes a rigid
+  /// transformation that de-rotates (de-reflects, etc.) a superlattice of
+  /// child. A property of Q^{N} is that (Q^{N}).inverse()  ==
+  /// (Q^{N}).transpose().
   Eigen::Matrix3d isometry;
 
-  /// \brief PrimGrid for supercell of parent structure
-  /// The parent structure defines the ideal strain state, and the child
-  /// structure must undergo an 'idealization' deformation to perfectly tile the
-  /// parent structure supercell.
-  ///   Define:
-  ///      - 'Sp(i)' as the ideal parent supercell
-  ///      - 'Sc(i)' as the ideal child supercell
-  ///      - 'Sc(d)' as the deformed child supercell
-  ///      - 'R' as cartesian rotation/reflection/rotoreflection ('isometry')
-  ///      - 'U' as stretch tensor ('stretch')
-  ///   Then, the ideal and deformed superlattices satisfy
-  ///      Sp(i) == Sc(i)
-  ///   and
-  ///      Sc(i) == U * R * Sc(d)
-  ///   and
-  ///      Sc(d) == R.transpose() * U.inverse() * Sc(i)
+  /// This encodes the parent lattice (L1) and superlattice of parent that the
+  /// child is mapped to (L1 * T1 * N), according to:
+  ///
+  ///     parent.prim_lattice().lat_column_mat() == L1
+  ///     parent.superlattice().lat_column_mat() == L1 * T1 * N
+  ///
   Superlattice parent;
 
-  /// \brief PrimGrid for supercell of child structure
-  /// The child lattice is recorded in its idealized state (de-rotated and
-  /// un-deformed) The transformation matrices 'isometry' and 'stretch' record
-  /// the idealization transformation that yielded the ideal child lattice from
-  /// its initial state
-  ///   Define:
-  ///      - 'Sp(i)' as the ideal parent supercell
-  ///      - 'Sc(i)' as the ideal child supercell
-  ///      - 'Sc(d)' as the deformed child supercell
-  ///      - 'R' as cartesian rotation/reflection/rotoreflection ('isometry')
-  ///      - 'U' as stretch tensor ('stretch')
-  ///   Then, the ideal and deformed superlattices satisfy
-  ///      Sp(i) == Sc(i)
-  ///   and
-  ///      Sc(i) == U * R * Sc(d)
-  ///   and
-  ///      Sc(d) == R.transpose() * U.inverse() * Sc(i)
+  /// This encodes the mapped child lattice (V^{N} * Q^{N} * L2) and the mapped
+  /// child superlattice (V^{N} * Q^{N} * L2 * T2), according to:
+  ///
+  ///     child.prim_lattice().lat_column_mat() == V^{N} * Q^{N} * L2
+  ///     child.superlattice().lat_column_mat() == V^{N} * Q^{N} * L2 * T2
+  ///
+  /// Note:
+  /// - parent.superlattice() == child.superlattice()
+  /// - In many cases, such as when parent is a prim, T2 = I.
   Superlattice child;
 
-  /// \brief strain_cost of the LatticeNode
+  /// The lattice deformation cost for this lattice mapping
   double cost;
 
-  /// \brief Holds the name of the method used to calculate the lattice
-  /// deformation cost
+  /// Holds the name of the method used to calculate the lattice deformation
+  /// cost
   std::string cost_method;
 
   /// Construct LatticeNode, setting all members directly
   LatticeNode(Superlattice parent, Superlattice child, Eigen::Matrix3d stretch,
               Eigen::Matrix3d isometry, double cost, std::string cost_method);
 
-  // We should prefer putting the logic of how LatticeNode members are
-  // calculated in standalone methods rather than constructors.
+  // TODO: We should prefer putting the logic of how LatticeNode members are
+  // calculated in standalone methods rather than constructors...
 
   /// \brief Construct with ideal parent_scel and deformed child_scel, which are
   /// related by a deformation tensor [deprecated]
@@ -605,7 +599,10 @@ class StrucMapper {
   /// \brief returns reference to parent structure
   SimpleStructure const &parent() const;
 
-  ///\brief specify a superlattice of the parent to be searched during mapping
+  /// \brief specify a superlattice of the parent to be searched during mapping
+  ///
+  /// Used if:
+  /// -
   void add_allowed_lattice(Lattice const &_lat) {
     m_allowed_superlat_map
         [std::abs(round(volume(_lat) / parent().lat_column_mat.determinant()))]
@@ -637,148 +634,49 @@ class StrucMapper {
     m_superlat_map.clear();
   }
 
-  ///\brief k-best mappings of ideal child structure onto parent structure
-  /// Assumes that child_struc and parent_struc have lattices related by an
-  /// integer transformation so that search over lattices can be replaced with
-  /// simple matrix solution (faster than typical search) Atomic positions need
-  /// not be ideal
-  ///
-  ///\param child_struc Input structure to be mapped onto parent structure
-  ///\param k Number of k-best mapping relations to return.
-  ///\param max_cost Search will terminate once no mappings better than max_cost
-  /// are found \param min_cost All mappings better than min_cost will be
-  /// reported, without contributing to 'k'
-  ///
-  ///\result std::set<MappingNode> a list of valid mappings, sorted first by
-  /// cost, and then other attributes
+  // --- The `map_X_struc[_impose_Y]` methods are what run the algorithm ---
+
+  /// \brief Find the k-best mappings of a child structure onto the parent
+  /// structure, assuming that the child lattice and parent lattice are related
+  /// by an integer transformation
   std::set<MappingNode> map_ideal_struc(
       const SimpleStructure &child_struc, Index k = 1,
       double max_cost = StrucMapping::big_inf(), double min_cost = -TOL,
       bool keep_invalid = false) const;
 
-  ///\brief k-best mappings of arbitrary child structure onto parent structure,
-  /// without simplifying assumptions
-  ///       If k and k+1, k+2, etc mappings have identical cost, k will be
-  ///       increased until k+n mapping has cost greater than mapping k
-  ///
-  ///\param child_struc Input structure to be mapped onto parent structure
-  ///\param k Number of k-best mapping relations to return
-  ///\param max_cost Search will terminate once no mappings better than max_cost
-  /// are found \param min_cost All mappings better than min_cost will be
-  /// reported, without contributing to 'k' \param keep_invalid If true, invalid
-  /// mappings are retained in output; otherwise they are discarded
-  ///
-  ///\result std::set<MappingNode> a list of valid mappings, sorted first by
-  /// cost, and then other attributes
+  /// \brief Find the k-best mappings of an arbitrary child structure onto the
+  /// parent structure, without simplifying assumptions
   std::set<MappingNode> map_deformed_struc(
       const SimpleStructure &child_struc, Index k = 1,
       double max_cost = StrucMapping::big_inf(), double min_cost = -TOL,
       bool keep_invalid = false,
       SymOpVector const &child_factor_group = {SymOp::identity()}) const;
 
-  ///\brief k-best mappings of arbitrary child structure onto parent structure
-  ///       imposes simplifying assumption that solution is a superstructure of
-  ///       parent structure having integer volume on range [min_vol, max_vol]
-  ///       If k and k+1, k+2, etc mappings have identical cost, k will be
-  ///       increased until k+n mapping has cost greater than mapping k
-  ///
-  ///\param child_struc Input structure to be mapped onto parent structure
-  ///\param k Number of k-best mapping relations to return
-  ///\param max_cost Search will terminate once no mappings better than max_cost
-  /// are found \param min_cost All mappings better than min_cost will be
-  /// reported, without contributing to 'k' \param keep_invalid If true, invalid
-  /// mappings are retained in output; otherwise they are discarded
-  ///
-  ///\result std::set<MappingNode> a list of valid mappings, sorted first by
-  /// cost, and then other attributes
+  /// \brief Find the k-best mappings of an arbitrary child structure onto the
+  /// parent structure, specifying the range of parent superlattice volumes
+  /// considered
   std::set<MappingNode> map_deformed_struc_impose_lattice_vols(
       const SimpleStructure &child_struc, Index min_vol, Index max_vol,
       Index k = 1, double max_cost = StrucMapping::big_inf(),
       double min_cost = -TOL, bool keep_invalid = false,
       SymOpVector const &child_factor_group = {SymOp::identity()}) const;
 
-  ///\brief k-best mappings of arbitrary child structure onto parent structure
-  ///       imposes simplifying assumption that solution is THE superstructure
-  ///       of parent given by
-  ///       @param imposed_lat. Significantly faster than unconstrained search,
-  ///       but may miss best solution If k and k+1, k+2, etc mappings have
-  ///       identical cost, k will be increased until k+n mapping has cost
-  ///       greater than mapping k
-  ///
-  ///\param child_struc Input structure to be mapped onto parent structure
-  ///\param k Number of k-best mapping relations to return
-  ///\param max_cost Search will terminate once no mappings better than max_cost
-  /// are found \param min_cost All mappings better than min_cost will be
-  /// reported, without contributing to 'k' \param keep_invalid If true, invalid
-  /// mappings are retained in output; otherwise they are discarded
-  ///
-  ///\result std::set<MappingNode> a list of valid mappings, sorted first by
-  /// cost, and then other attributes
+  /// \brief Find the k-best mappings of an arbitrary child structure onto the
+  /// parent structure, specifying the parent superlattice exactly
   std::set<MappingNode> map_deformed_struc_impose_lattice(
       const SimpleStructure &child_struc, const Lattice &imposed_lat,
       Index k = 1, double max_cost = StrucMapping::big_inf(),
       double min_cost = -TOL, bool keep_invalid = false,
       SymOpVector const &child_factor_group = {SymOp::identity()}) const;
 
-  ///\brief k-best mappings of arbitrary child structure onto parent structure
-  ///       imposes simplifying assumption that the lattice mapping is known and
-  ///       specified by
-  ///       @param imposed_node. This sets the lattice and setting that defines
-  ///       the mapping relation This assumption is much than unconstrained
-  ///       search, but may miss best solution If k and k+1, k+2, etc mappings
-  ///       have identical cost, k will be increased until k+n mapping has cost
-  ///       greater than mapping k
-
-  ///
-  ///\param child_struc Input structure to be mapped onto parent structure
-  ///\param k Number of k-best mapping relations to return
-  ///\param max_cost Search will terminate once no mappings better than max_cost
-  /// are found \param min_cost All mappings better than min_cost will be
-  /// reported, without contributing to 'k' \param keep_invalid If true, invalid
-  /// mappings are retained in output; otherwise they are discarded
-  ///
-  ///\result std::set<MappingNode> a list of valid mappings, sorted first by
-  /// cost, and then other attributes
+  /// \brief Find the k-best mappings of an arbitrary child structure onto the
+  /// parent structure, specifying the lattice mapping exactly
   std::set<MappingNode> map_deformed_struc_impose_lattice_node(
       const SimpleStructure &child_struc, const LatticeNode &imposed_node,
       Index k = 1, double max_cost = StrucMapping::big_inf(),
       double min_cost = -TOL, bool keep_invalid = false) const;
 
-  ///\brief low-level function. Takes a queue of mappings and use it to seed a
-  /// search for k-best
-  ///       total mappings. The seed mappings may be partial (having only
-  ///       LatticeNode specified, and not HungarianNode) or complete. The
-  ///       result is appended to @param queue, and partial and invalid mappings
-  ///       are removed from the queue. If k and k+1, k+2, etc mappings have
-  ///       identical cost, k will be increased until k+n mapping has cost
-  ///       greater than mapping k
-
-  ///
-  ///
-  ///\param child_struc Input structure to be mapped onto parent structure
-  ///\param queue
-  ///\parblock
-  ///  list of partial mappings to seed search. Partial mappings are removed
-  ///  from list as they are searched finalized mappings are inserted into list
-  ///  as they are found.
-  ///\endparblock
-  ///
-  ///\param k Number of k-best mapping relations to return
-  ///\param max_cost Search will terminate once no mappings better than max_cost
-  /// are found \param min_cost All mappings better than min_cost will be
-  /// reported, without contributing to 'k' \param keep_invalid If true, invalid
-  /// mappings are retained in output; otherwise they are discarded \param
-  /// keep_tail If true, any partial or unresolved mappings at back of queue
-  /// will be retained (they are deleted otherwise) \param no_partition
-  /// \parblock
-  ///   If true, search over suboptimal basis permutations will be skipped (The
-  ///   optimal mapping will be found, but suboptimal mappings may be excluded
-  ///   in the k-best case. Degenerate permutations of atoms will not be
-  ///   identified.)
-  /// \endparblock
-  ///
-  ///\result Index specifying the number of complete, valid mappings in the
-  /// solution set
+  /// Find k-best mappings
   Index k_best_maps_better_than(SimpleStructure const &child_struc,
                                 std::set<MappingNode> &queue, Index k = 1,
                                 double max_cost = StrucMapping::big_inf(),
@@ -790,15 +688,9 @@ class StrucMapper {
   StrucMapCalculatorInterface const &calculator() const { return *m_calc_ptr; }
 
  private:
-  /// \brief generate list of partial mapping seeds (i.e., LatticeNode only)
-  /// from a list of supercells of the parent structure and a list supercells of
-  /// the child structure
-  ///
-  ///\param k Number of k-best mapping relations to return
-  ///\param max_lattice_cost Search will terminate once no lattice mappings
-  /// better than max_lattice_cost are found \param min_lattice_cost All lattice
-  /// mappings better than min_lattice_cost will be returned, without
-  /// contributing to 'k'
+  /// \brief Generate a set of mapping seeds (i.e., MappingNode with
+  /// LatticeNode only) from a list of supercells of the parent structure and
+  /// a list of supercells of the child structure
   std::set<MappingNode> _seed_k_best_from_super_lats(
       SimpleStructure const &child_struc,
       std::vector<Lattice> const &_parent_scels,
@@ -809,6 +701,8 @@ class StrucMapper {
   /// \brief construct partial mapping nodes (with uninitialized atomic_node)
   /// based on current settings considers supercells with integer volume between
   /// min_vol and max_vol
+  ///
+  /// Note:
   std::set<MappingNode> _seed_from_vol_range(
       SimpleStructure const &child_struc, Index k, Index min_vol, Index max_vol,
       double max_strain_cost, double min_strain_cost,
@@ -825,6 +719,8 @@ class StrucMapper {
     return m_filter_f(_parent_lat, _child_lat);
   }
 
+  /// \brief Calculate min_vol, max_vol range from min_va_frac, max_va_frac, and
+  /// properties of the child and parent structures and calculator.
   std::pair<Index, Index> _vol_range(const SimpleStructure &child_struc) const;
 
   notstd::cloneable_ptr<StrucMapCalculatorInterface> m_calc_ptr;

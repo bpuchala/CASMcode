@@ -56,7 +56,7 @@ Traits const &traits(std::string const &dof_key);
 DoF::BasicTraits const &basic_traits(std::string const &dof_key);
 
 /// \brief Collection of all the traits specific to a DoF type
-class Traits {
+class Traits {  // Note: full class documentation in DoFTraits.cc
  public:
   static std::string class_desc() { return "DoFType::Traits"; }
 
@@ -76,9 +76,7 @@ class Traits {
   virtual ~Traits() {}
 
   /// \brief Retrieve the standard values for a DoF from dictionary of
-  /// properties from properties.calc.json
-  ///  Returns matrix with standard values, and names of properties that were
-  ///  used to construct the matrix
+  /// properties from xtal::SimpleStructure or MappedProperties
   virtual std::pair<Eigen::MatrixXd, std::set<std::string> > find_values(
       std::map<std::string, Eigen::MatrixXd> const &values) const;
 
