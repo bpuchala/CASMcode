@@ -300,6 +300,53 @@ void check_equal(Eigen::MatrixXd const &A, Eigen::MatrixXd const &B,
 ///       F_parent_to_child = F_child_to_parent.inverse()
 ///   For example, `Ustrain` is defined: F_parent_to_child = R * U.
 ///
+///
+/// Relating LatticeNode and LatticeMap definitions:
+///
+/// Lattice mapping gives relations of the form (see \class xtal::LatticeNode
+/// for more on definitions):
+///     L1 * T1 * N = F^{N} * L2 * T2,           (child -> parent deformation)
+/// Or:
+///     F_reverse^{N} * L1 * T1 * N = L2 * T2    (parent -> child deformation)
+///
+/// F can be decomposed:
+///     F = V * Q = Q * U,
+///     where Q.inverse() = Q.transpose(),
+///     V and U are symmetric stretch tensors (left and right, respectively)
+///
+///     F.transpose() * F = U.transpose() * Q.inverse() * Q * U = U^2
+///
+/// Relations between F, U, V, Q and the "reverse" definitions:
+///     F_reverse = F.inverse()
+///     -> Q_reverse * U_reverse = Q.inverse() * V.inverse()
+///     -> Q_reverse = Q.inverse() = Q.transpose()
+///     -> V = U_reverse.inverse()
+///     -> Q = (V * F_reverse).transpose()
+///
+/// The polar decomposition of F gives U:
+///     U = polar_decomposition(F),
+///     or U_reverse = polar_decomposition(F_reverse)
+///
+/// The xtal::LatticeNode definitions of stretch and isometry are:
+///     L1 * T1 * N = V^{N} * Q^{N} * L2,
+///     stretch = V^{N} = U_reverse.inverse(),
+///     isometry = Q^{N} = (V * F_reverse).transpose()
+///
+/// The xtal::LatticeMap solutions are defined:
+///     lattice_map.child_matrix() = lattice_map.deformation_gradient() *
+///                                  lattice_map.parent_matrix() *
+///                                  lattice_map.matrixN()
+/// Where:
+///     lattice_map.deformation_gradient() = F_reverse^{N}
+///     lattice_map.matrixN() = N
+///     lattice_map.parent_matrix() = L1 * T1
+///     lattice_map.child_matrix() = L2 * T2
+///
+/// So relating xtal::LatticeMap definitions and xtal::LatticeNode defintions:
+///     lattice_node.stretch = polar_decomposition(
+///                  lattice_map.deformation_gradient()).inverse();
+///     lattice_node.isometry = (lattice_map.deformation_gradient() *
+///                              lattice_node.stretch).transpose();
 
 /// Construct LatticeNode, setting all members directly
 LatticeNode::LatticeNode(Superlattice _parent, Superlattice _child,
@@ -325,17 +372,21 @@ LatticeNode::LatticeNode(Lattice const &parent_prim, Lattice const &parent_scel,
                     parent_prim.tol()),
             parent_scel),
       cost(_cost) {
-  // F is from ideal parent to child ( child_scel = F * parent_scel )
-  Eigen::Matrix3d F =
+  // see LatticeNode class documentation for more on relations
+
+  // parent_prim = L1
+  // parent_scel = L1 * T1 * N
+  // child_prim = L2
+  // child_scel = L2 * T2
+  // F_reverse * L1 * T1 * N = L2 * T2
+  Eigen::Matrix3d F_reverse =
       child_scel.lat_column_mat() * parent_scel.inv_lat_column_mat();
 
-  // stretch is from (de-rotated, strained) child to ideal parent
-  // child_scel = F * parent_scel = isometry.transpose() * stretch.inverse() *
-  // parent_scel OR: parent_scel = stretch * isometry * child_scel
-  stretch = strain::right_stretch_tensor(F).inverse();
+  // V = U_reverse.inverse()
+  stretch = strain::right_stretch_tensor(F_reverse).inverse();
 
-  // isometry is from child to strained parent
-  isometry = (F * stretch).transpose();
+  // Q = (F_reverse * V).transpose()
+  isometry = (F_reverse * stretch).transpose();
 
   if (StrucMapping::is_inf(cost)) {
     cost = StrainCostCalculator::isotropic_strain_cost(stretch);
@@ -351,12 +402,18 @@ LatticeNode::LatticeNode(Lattice const &parent_prim, Lattice const &parent_scel,
 
 LatticeNode::LatticeNode(LatticeMap const &_lat_map, Lattice const &parent_prim,
                          Lattice const &child_prim)
-    :  // stretch is from (de-rotated, strained) child to ideal parent
+    :  // see LatticeNode class documentation for more on relations
+       // V = U_reverse.inverse()
       stretch(polar_decomposition(_lat_map.deformation_gradient()).inverse()),
-      // isometry is from child to strained parent
+      // Q = (F_reverse * V).transpose()
       isometry((_lat_map.deformation_gradient() * stretch).transpose()),
+      // parent.prim_lattice() = L1
+      // _lat_map.parent_matrix() = L1 * T1
+      // parent.superlattice() = L1 * T1 * N
       parent(parent_prim, Lattice(_lat_map.parent_matrix() * _lat_map.matrixN(),
                                   parent_prim.tol())),
+      // (mapped) child.prim_lattice() = F * L2
+      // (mapped) child.superlattice() = parent.superlattice()
       child(Lattice(_lat_map.deformation_gradient().inverse() *
                         child_prim.lat_column_mat(),
                     parent_prim.tol()),
@@ -375,10 +432,10 @@ LatticeNode::LatticeNode(LatticeMap const &_lat_map, Lattice const &parent_prim,
 ///
 /// \param parent_scel and \param child_scel are integer combinations of the
 /// primitive cells 'parent_prim' and 'child_prim', respectively
-/// \param parent_prim primitive lattice being mapped to
-/// \param parent_scel exact integral multiple of parent_prim
-/// \param unmapped_child_prim primitive lattice being mapped
-/// \param unmapped_child_scel exact integral multiple of child_prim
+/// \param parent_prim primitive lattice being mapped to (L1)
+/// \param parent_scel exact integral multiple of parent_prim (L1 * T1 * N)
+/// \param unmapped_child_prim primitive lattice being mapped (L2)
+/// \param unmapped_child_scel exact integral multiple of child_prim (L2 * T2)
 ///
 /// Note:
 /// - In result: `parent_scel = stretch * isometry * unmapped_child_scel'
@@ -389,44 +446,38 @@ LatticeNode make_lattice_node(Lattice const &parent_prim,
                               Lattice const &parent_scel,
                               Lattice const &unmapped_child_prim,
                               Lattice const &unmapped_child_scel) {
+  // see LatticeNode class documentation for more on relations
+
+  // parent_prim = L1
+  // parent_scel = L1 * T1 * N
+  // child_prim = L2
+  // child_scel = L2 * T2
+
+  // parent.prim_lattice() = L1
+  // parent.superlattice() = L1 * T1 * N
   Superlattice parent{parent_prim, parent_scel};
 
-  // unmapped_child_scel = F_parent_to_unmapped_child * parent_scel
-  Eigen::Matrix3d F_parent_to_unmapped_child =
+  // F_reverse * L1 * T1 * N = L2 * T2
+  Eigen::Matrix3d F_reverse =
       unmapped_child_scel.lat_column_mat() * parent_scel.inv_lat_column_mat();
 
-  // parent_scel = F_unmapped_child_to_parent * unmapped_child_scel
-  Eigen::Matrix3d F_unmapped_child_to_parent =
+  // L1 * T1 * N = F * L2 * T2, F = F_reverse.inverse()
+  Eigen::Matrix3d F =
       parent_scel.lat_column_mat() * unmapped_child_scel.inv_lat_column_mat();
 
-  // construct the mapped child superlattice:
-  Lattice mapped_child_prim_lattice{
-      F_unmapped_child_to_parent * unmapped_child_prim.lat_column_mat(),
-      parent_prim.tol()};
+  // mapped_child_prim_lattice = F * L2
+  Lattice mapped_child_prim_lattice{F * unmapped_child_prim.lat_column_mat(),
+                                    parent_prim.tol()};
 
+  // (mapped) child.prim_lattice() = F * L2
+  // (mapped) child.superlattice() = parent.superlattice()
   Superlattice mapped_child{mapped_child_prim_lattice, parent_scel};
 
-  // construct stretch and isometry:
-  //
-  //     want stretch, isometry such that:
-  //       parent_scel = stretch * isometry * unmapped_child_scel
-  //
-  //     given:
-  //     - unmapped_child_scel = F_parent_to_unmapped_child * parent_scel
-  //     - F_parent_to_unmapped_child = R * right_stretch_tensor
-  //     - R.inverse() == R.transpose()
-  //
-  //     then:
-  //       (R * right_stretch_tensor).inverse = (stretch * isometry)
-  //     -> stretch = right_stretch_tensor.inverse
-  //     -> R = F_parent_to_unmapped_child * stretch
-  //     -> isometry = R.transpose()
-  //
-  Eigen::Matrix3d stretch =
-      strain::right_stretch_tensor(F_parent_to_unmapped_child).inverse();
+  // V = U_reverse.inverse()
+  Eigen::Matrix3d stretch = strain::right_stretch_tensor(F_reverse).inverse();
 
-  // isometry is from child to strained parent
-  Eigen::Matrix3d isometry = (F_parent_to_unmapped_child * stretch).transpose();
+  // Q = (F_reverse * V).transpose()
+  Eigen::Matrix3d isometry = (F_reverse * stretch).transpose();
 
   double cost = StrainCostCalculator::isotropic_strain_cost(stretch);
 
@@ -442,8 +493,8 @@ LatticeNode make_lattice_node(Lattice const &parent_prim,
 ///
 /// \param _lat_map LatticeMap used to map `unmapped_child_prim` to
 ///     `parent_prim`
-/// \param parent_prim primitive lattice being mapped to
-/// \param unmapped_child_prim primitive lattice being mapped
+/// \param parent_prim primitive lattice being mapped to (L1)
+/// \param unmapped_child_prim primitive lattice being mapped (L2)
 ///
 /// Note:
 /// - In result: `parent_scel = stretch * isometry * unmapped_child_scel'
@@ -453,20 +504,29 @@ LatticeNode make_lattice_node(Lattice const &parent_prim,
 LatticeNode make_lattice_node(LatticeMap const &_lat_map,
                               Lattice const &parent_prim,
                               Lattice const &unmapped_child_prim) {
-  // F: unmapped_child_scel = F * parent_scel * matrixN
-  Eigen::Matrix3d F = _lat_map.deformation_gradient();
+  // see LatticeNode class documentation for more on relations
 
-  Eigen::Matrix3d stretch = polar_decomposition(F).inverse();
-  Eigen::Matrix3d isometry = (F * stretch).transpose();
+  // F_reverse * L1 * T1 * N = L2 * T2
+  Eigen::Matrix3d F_reverse = _lat_map.deformation_gradient();
 
-  // remember parent_scel == mapped_child_scel
+  // V = U_reverse.inverse()
+  Eigen::Matrix3d stretch = polar_decomposition(F_reverse).inverse();
 
+  // Q = (F_reverse * V).transpose()
+  Eigen::Matrix3d isometry = (F_reverse * stretch).transpose();
+
+  // parent.prim_lattice() = L1
+  // parent.superlattice() = L1 * T1 * N
   Lattice parent_scel{_lat_map.parent_matrix() * _lat_map.matrixN(),
                       parent_prim.tol()};
   Superlattice parent{parent_prim, parent_scel};
 
+  // mapped_child_prim = F * L2 = F_reverse.inverse() * L2
   Lattice mapped_child_prim{_lat_map.deformation_gradient().inverse() *
                             unmapped_child_prim.lat_column_mat()};
+
+  // (mapped) child.prim_lattice() = F * L2
+  // (mapped) child.superlattice() = parent.superlattice()
   Superlattice mapped_child{mapped_child_prim, parent_scel};
 
   double cost = _lat_map.strain_cost();
