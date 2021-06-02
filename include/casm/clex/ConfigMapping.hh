@@ -439,11 +439,9 @@ class ConfigMapper {
   ///   be mapped to
   /// \param _settings ConfigMapping::Settings, all collected parameters
   ///   controlling the configuration mapping
-  /// \param _tol tolerance for mapping comparisons (typically,
-  ///   _shared_prim->crystallography_tol())
   ///
   ConfigMapper(std::shared_ptr<Structure const> const &_shared_prim,
-               ConfigMapperSettings const &_settings, double _tol);
+               ConfigMapperSettings const &_settings);
 
   std::shared_ptr<Structure const> const &shared_prim() const {
     return m_shared_prim;

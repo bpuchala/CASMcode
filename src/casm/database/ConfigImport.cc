@@ -39,8 +39,7 @@ StructureMap<Configuration>::StructureMap(ConfigMapperSettings const &_set,
   auto const &shared_prim = primclex.shared_prim();
 
   // -- construct ConfigMapper --
-  m_configmapper.reset(
-      new ConfigMapper(shared_prim, _set, shared_prim->lattice().tol()));
+  m_configmapper.reset(new ConfigMapper(shared_prim, _set));
 }
 
 /// \brief Specialized import method for ConfigType

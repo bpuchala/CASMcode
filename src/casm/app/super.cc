@@ -587,10 +587,8 @@ int super_command(const CommandArgs &args) {
       log() << "\n------\n";
 
       if (vm.count("add-canonical")) {
-        double tol = TOL;
-
         ConfigMapper configmapper(primclex.shared_prim(),
-                                  ConfigMapperSettings(), tol);
+                                  ConfigMapperSettings());
 
         auto map_res =
             configmapper.import_structure(make_simple_structure(super));

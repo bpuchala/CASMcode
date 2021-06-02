@@ -442,16 +442,15 @@ Index ConfigMapperResult::n_optimal(double tol /*=TOL*/) const {
 }
 
 ConfigMapper::ConfigMapper(std::shared_ptr<Structure const> const &_shared_prim,
-                           ConfigMapperSettings const &_settings, double _tol)
+                           ConfigMapperSettings const &_settings)
     : m_shared_prim(_shared_prim),
       m_struc_mapper(
           PrimStrucMapCalculator(
               *shared_prim(), adapter::Adapter<xtal::SymOpVector, SymGroup>()(
                                   shared_prim()->factor_group())),
           _settings.lattice_weight, _settings.max_volume_change,
-          _settings.options(),
-          _tol > 0. ? _tol : shared_prim()->lattice().tol(),
-          _settings.min_va_frac, _settings.max_va_frac),
+          _settings.options(), _settings.cost_tol, _settings.min_va_frac,
+          _settings.max_va_frac),
       m_settings(_settings) {
   if (settings().filter) {
     m_struc_mapper.set_filter(settings().filter);

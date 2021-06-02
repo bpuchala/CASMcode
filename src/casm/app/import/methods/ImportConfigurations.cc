@@ -420,8 +420,7 @@ void ImportConfigurations::run(PrimClex &primclex,
   // output:
   // - structure_import_data
 
-  ConfigMapper config_mapper{shared_prim, config_mapper_settings,
-                             shared_prim->lattice().tol()};
+  ConfigMapper config_mapper{shared_prim, config_mapper_settings};
 
   log.custom("Mapping structures");
   std::map<fs::path, StructureImportData> structure_import_data;
