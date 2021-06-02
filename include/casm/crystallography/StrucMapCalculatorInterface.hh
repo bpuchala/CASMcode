@@ -31,8 +31,23 @@ using AllowedSpecies = std::vector<std::vector<std::string>>;
 
 }  // namespace StrucMapping
 
+// TODO:
+// - Explain _factor_group default / non-default behavior
+// - Does species_mode SpeciesMode::MOL work? how does it behave?
+
 class StrucMapCalculatorInterface {
  public:
+  /// StrucMapCalculatorInterface constructor
+  ///
+  /// \param _parent Reference structure to be mapped to
+  /// \param _factor_group Factor group of the parent structure.
+  /// \param _species_mode Specifies whether to map to parent atoms or
+  ///     molecules. Use `SimpleStructure::SpeciesMode::ATOM`.
+  /// \param allowed_species Names of allowed species on each parent structure
+  ///     site. If empty, `allowed_species[site_index]` is set to the 1-element
+  ///     vector with the name of the current species on the parent structure
+  ///     site. Use `allowed_molecule_names` to use the names of
+  ///     `xtal::Molecule` allowed on `xtal::BasicStructure` sites.
   StrucMapCalculatorInterface(
       SimpleStructure _parent,
       SymOpVector const &_factor_group = {SymOp::identity()},
@@ -96,19 +111,19 @@ class StrucMapCalculatorInterface {
 
   virtual ~StrucMapCalculatorInterface() {}
 
-  /// \brief construct list of prospective mapping translations
+  /// Constructs a list of prospective mapping translations
   virtual std::vector<Eigen::Vector3d> translations(
       MappingNode const &_node, SimpleStructure const &child_struc) const = 0;
 
-  /// \brief Creates copy of _child_struc by applying isometry, lattice
-  /// transformation, translation, and site permutation of _node
+  /// Creates a copy of the child structure and applies mapping
   virtual SimpleStructure resolve_setting(
       MappingNode const &_node, SimpleStructure const &_child_struc) const = 0;
 
-  /// \brief Calculates final mapping score and sets _node.is_valid
+  /// Sets MappingNode data based on lattice and atomic mapping results
   virtual void finalize(MappingNode &_node, SimpleStructure const &child_struc,
                         bool const &symmetrize_atomic_cost = false) const = 0;
 
+  /// Populates the cost matrix for the atomic assignment problem
   virtual bool populate_cost_mat(MappingNode &_node,
                                  SimpleStructure const &child_struc) const = 0;
 

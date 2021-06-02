@@ -189,76 +189,18 @@ struct ConfigMapperResult {
     /// StrucMapper and transformed according to the results stored in
     /// `mapping` to the setting of the `parent` superstructure.
     ///
-    /// Lattice mapping results satisfy:
-    ///
-    ///     mapped_child.lat_column_mat = mapping.lattice_node.stretch *
-    ///         mapping.lattice_node.isometry *
-    ///         unmapped_child.lat_column_mat *
-    ///         mapping.lattice_node.child.transformation_matrix_to_super()
-    ///             .cast<double>();
-    ///
-    /// Atomic assignment mapping results satisfy:
-    ///
-    ///     mapped_child.atom_info.names[i] =
-    ///         unmapped_child.atom_info.names[perm[i]],
-    ///
-    ///     mapped_child.atom_info.coords.col(i) +
-    ///         mapping.atom_displacement.col(i) =
-    ///         mapping.lattice_node.stretch * mapping.lattice_node.isometry *
-    ///         unmapped_child.atom_info.coords.col(perm[i]) +
-    ///             mapping.atomic_node.translation,
-    ///
-    ///     where perm = mapping.atom_permutation.
-    ///
-    /// Additionally, `mapping.mol_map`, and `mapping.mol_labels` hold
-    /// information used for on molecule mapping:
-    ///
-    ///     mapping.mol_map[i] (std::set<Index): the set atom indices of parent
-    ///         superstructure that comprise the molecule at its i-th site.
-    ///
-    ///     mapping.mol_labels[i] (std::pair<std::string, Index>): the name and
-    ///         occupant index of the molecule on the the i-th site of the
-    ///         parent superstructure
-    ///
-    ///     mapped_child.mol_info.names[i] = mapping.mol_labels[i].first
-    ///
-    ///     mapped_child.mol_info.coords.col(i) =
-    ///         mapping.lattice_node.stretch.inverse() *
-    ///         (parent_superstructure.coords(i) + mol_displacement.col(i))
-    ///
-    ///     where mol_displacement is 3xN matrix, mol_displacement.col(i) =
-    ///         mean of mapping.atom_displacement.col(j),
-    ///         for j in mapping.mol_map[i],
-    ///     N is number of sites in parent_superstructure
-    ///
-    ///
-    /// DoF / properties are mapped according to:
-    ///
-    ///     For global DoF/properties:
-    ///         v_mapped = matrix * v_unmapped,
-    ///
-    ///     For site DoF/properties, on site i:
-    ///         v_mapped[i] = matrix * v_unmapped[perm[i]],
-    ///
-    ///     where matrix = AnisoValTraits(type).symop_to_matrix(
-    ///                        mapping.lattice_node.isometry,
-    ///                        mapping.lattice_node.stretch.inverse() *
-    ///                            mapping.atomic_node.translation,
-    ///                        mapping.atomic_node.time_reversal)
-    ///     and perm = mapping.atom_permutation
-    ///
     /// Additionally, the following global properties are added:
     ///
     ///     mapped_child.properties["Ustrain"] =
     ///         StrainConverter("Ustrain").unroll_E(
     ///             mapping.lattice_node.stretch.inverse());
     ///
-    ///     mapped_child.mol_info.properties["disp"] = mol_displacement,
+    ///     mapped_child.mol_info.properties["disp"] =
+    ///         // displacements associated with molecules (mol_displacement in
+    ///         // `MappingNode` documentation)
     ///
     ///     mapped_child.properties["isometry"] =
     ///         // unrolled 9-element vector from mapping.lattice_node.isometry
-    ///         // TODO: document convention (col-major?), why is it included?
-    ///
     ///
     xtal::SimpleStructure mapped_child;
 

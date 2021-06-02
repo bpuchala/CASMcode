@@ -303,8 +303,7 @@ void check_equal(Eigen::MatrixXd const &A, Eigen::MatrixXd const &B,
 ///
 /// Relating LatticeNode and LatticeMap definitions:
 ///
-/// Lattice mapping gives relations of the form (see \class xtal::LatticeNode
-/// for more on definitions):
+/// Lattice mapping gives relations of the form:
 ///     L1 * T1 * N = F^{N} * L2 * T2,           (child -> parent deformation)
 /// Or:
 ///     F_reverse^{N} * L1 * T1 * N = L2 * T2    (parent -> child deformation)
@@ -357,7 +356,13 @@ LatticeNode::LatticeNode(Superlattice _parent, Superlattice _child,
       parent(_parent),
       child(_child),
       cost(_cost),
-      cost_method(_cost_method) {}
+      cost_method(_cost_method) {
+  check_equal(
+      parent.superlattice().lat_column_mat(),
+      child.superlattice().lat_column_mat(),
+      "LatticeNode constructor error: _parent.superlattice().lat_column_mat() "
+      "!= _child.superlattice().lat_column_mat()");
+}
 
 LatticeNode::LatticeNode(Lattice const &parent_prim, Lattice const &parent_scel,
                          Lattice const &child_prim, Lattice const &child_scel,
@@ -389,7 +394,7 @@ LatticeNode::LatticeNode(Lattice const &parent_prim, Lattice const &parent_scel,
   isometry = (F_reverse * stretch).transpose();
 
   if (StrucMapping::is_inf(cost)) {
-    cost = StrainCostCalculator::isotropic_strain_cost(stretch);
+    cost = isotropic_strain_cost(stretch);
     cost_method = "isotropic_strain_cost";
   } else {
     cost_method = "unknown";
@@ -397,7 +402,8 @@ LatticeNode::LatticeNode(Lattice const &parent_prim, Lattice const &parent_scel,
 
   check_equal(parent.superlattice().lat_column_mat(),
               stretch * isometry * child_scel.lat_column_mat(),
-              "LatticeNode constructor 1");
+              "LatticeNode constructor error: parent_scel.lat_column_mat() != "
+              "stretch * isometry * child_scel.lat_column_mat()");
 }
 
 LatticeNode::LatticeNode(LatticeMap const &_lat_map, Lattice const &parent_prim,
@@ -420,11 +426,15 @@ LatticeNode::LatticeNode(LatticeMap const &_lat_map, Lattice const &parent_prim,
             parent.superlattice()),
       cost(_lat_map.strain_cost()),
       cost_method(_lat_map.cost_method()) {
-  check_equal(parent.superlattice().lat_column_mat(),
-              child.superlattice().lat_column_mat(),
-              "LatticeNode constructor 2a");
-  check_equal(_lat_map.deformation_gradient().inverse(), stretch * isometry,
-              "LatticeNode constructor 2b");
+  check_equal(
+      parent.superlattice().lat_column_mat(),
+      child.superlattice().lat_column_mat(),
+      "LatticeNode constructor error: parent.superlattice().lat_column_mat() "
+      "!= child.superlattice().lat_column_mat()");
+  check_equal(
+      _lat_map.deformation_gradient().inverse(), stretch * isometry,
+      "LatticeNode constructor error: "
+      "_lat_map.deformation_gradient().inverse() != stretch * isometry");
 }
 
 /// \brief Construct a LatticeNode by calculating the deformation tensor that
@@ -440,7 +450,7 @@ LatticeNode::LatticeNode(LatticeMap const &_lat_map, Lattice const &parent_prim,
 /// Note:
 /// - In result: `parent_scel = stretch * isometry * unmapped_child_scel'
 /// - The lattice deformation cost is calculated using
-/// `StrainCostCalculator::isotropic_strain_cost(stretch)`
+///   `isotropic_strain_cost(stretch)`
 ///
 LatticeNode make_lattice_node(Lattice const &parent_prim,
                               Lattice const &parent_scel,
@@ -479,11 +489,13 @@ LatticeNode make_lattice_node(Lattice const &parent_prim,
   // Q = (F_reverse * V).transpose()
   Eigen::Matrix3d isometry = (F_reverse * stretch).transpose();
 
-  double cost = StrainCostCalculator::isotropic_strain_cost(stretch);
+  double cost = isotropic_strain_cost(stretch);
 
-  check_equal(parent.superlattice().lat_column_mat(),
-              stretch * isometry * unmapped_child_scel.lat_column_mat(),
-              "make_lattice_node 1");
+  check_equal(
+      parent.superlattice().lat_column_mat(),
+      stretch * isometry * unmapped_child_scel.lat_column_mat(),
+      "Error in make_lattice_node: parent.superlattice().lat_column_mat() != "
+      "stretch * isometry * unmapped_child_scel.lat_column_mat()");
 
   return LatticeNode(parent, mapped_child, stretch, isometry, cost,
                      "isotropic_strain_cost");
@@ -583,6 +595,78 @@ bool identical(AssignmentNode const &A, AssignmentNode const &B) {
   if (!almost_equal(A.translation, B.translation, 1e-6)) return false;
   return true;
 }
+
+/// \class MappingNode
+/// \brief Data structure holding a mapping between structures
+///
+/// The structure mapping methods map a (unmapped) "child" structure
+/// (`xtal::SimpleStructure`) onto a reference "parent" structure (also
+/// `xtal::SimpleStructure`) through a combination of permutation,
+/// displacement, and translation of atoms, and both rigid and deformation
+/// transformations of the overall structure. The "mapped child" is the result
+/// of applying the permutation, translation, and rigid transformations to
+/// create a structure exactly equivalent to the "child" structure, but
+/// resolved to the setting of the parent structure.
+///
+/// Lattice mapping results satisfy:
+///
+///     mapped_child.lat_column_mat = mapping.lattice_node.stretch *
+///         mapping.lattice_node.isometry *
+///         unmapped_child.lat_column_mat *
+///         mapping.lattice_node.child.transformation_matrix_to_super()
+///             .cast<double>();
+///
+/// Atomic assignment mapping results satisfy:
+///
+///     mapped_child.atom_info.names[i] =
+///         unmapped_child.atom_info.names[perm[i]],
+///
+///     mapped_child.atom_info.coords.col(i) =
+///         parent_superstructure.coords(i) +
+///         mapping.atom_displacement.col(i) =
+///         mapping.lattice_node.stretch * mapping.lattice_node.isometry *
+///         unmapped_child.atom_info.coords.col(perm[i]) +
+///             mapping.atomic_node.translation,
+///
+///     where perm = mapping.atom_permutation.
+///
+/// Additionally, `mapping.mol_map`, and `mapping.mol_labels` hold
+/// information used for on molecule mapping:
+///
+///     mapping.mol_map[i] (std::set<Index): the set atom indices of parent
+///         superstructure that comprise the molecule at its i-th site.
+///
+///     mapping.mol_labels[i] (std::pair<std::string, Index>): the name and
+///         occupant index of the molecule on the the i-th site of the
+///         parent superstructure
+///
+///     mapped_child.mol_info.names[i] = mapping.mol_labels[i].first
+///
+///     mapped_child.mol_info.coords.col(i) =
+///         mapping.lattice_node.stretch.inverse() *
+///         (parent_superstructure.coords(i) + mol_displacement.col(i))
+///
+///     where mol_displacement is 3xN matrix, mol_displacement.col(i) =
+///         mean of mapping.atom_displacement.col(j),
+///         for j in mapping.mol_map[i],
+///     N is number of sites in parent_superstructure
+///
+///
+/// DoF / properties are mapped according to:
+///
+///     For global DoF/properties:
+///         v_mapped = matrix * v_unmapped,
+///
+///     For site DoF/properties, on site i:
+///         v_mapped[i] = matrix * v_unmapped[perm[i]],
+///
+///     where matrix = AnisoValTraits(type).symop_to_matrix(
+///                        mapping.lattice_node.isometry,
+///                        mapping.lattice_node.stretch.inverse() *
+///                            mapping.atomic_node.translation,
+///                        mapping.atomic_node.time_reversal)
+///     and perm = mapping.atom_permutation
+
 //*******************************************************************************************
 
 MappingNode MappingNode::invalid() {
@@ -640,6 +724,176 @@ bool MappingNode::operator<(MappingNode const &B) const {
 
   return false;
 }
+
+/// \class StrucMapper
+/// \brief Implements a method for mapping a "child" crystal structure as a
+/// deformation of a reference "parent" crystal structure.
+///
+/// Note: this documentation uses the notation and conventions from the paper
+/// `Comparing crystal structures with symmetry and geometry`,
+/// by John C Thomas, Anirudh Raju Natarajan, Anton Van der Ven
+
+/// In general, structure mapping may require mapping a superstructure of the
+/// child structure to a superstructure of the parent structure. In this
+/// method, lattice mapping is done first, then atomic assignment for each
+/// potential lattice mapping solution. A variety of settings control which
+/// lattice mappings are considered, how many solutions are stored, and how
+/// they are scored. For those specifics, see the StrucMapper constructor
+/// documentation and the `map_X_struc[_Y]` methods which run the algorithm
+/// in general or under different simplifying assumptions:
+///
+/// - `StrucMapper::map_deformed_struc`: (Most general) Find the k-best
+///   mappings of an arbitrary child structure onto the parent structure,
+///   without simplifying assumptions
+/// - `StrucMapper::map_deformed_struc_impose_lattice_vols`: Find the k-best
+///   mappings of an arbitrary child structure onto the parent structure,
+///   specifying the range of parent superlattice volumes considered
+/// - `StrucMapper::map_deformed_struc_impose_lattice`: Find the k-best
+///   mappings of an arbitrary child structure onto the parent structure,
+///   specifying the parent superlattice exactly
+/// - `StrucMapper::map_deformed_struc_impose_lattice_node`: Find the k-best
+///   mappings of an arbitrary child structure onto the parent structure,
+///   specifying the lattice mapping exactly
+/// - `StrucMapper::map_ideal_struc`: Find the k-best mappings of a child
+///   structure onto the parent structure, assuming that the child lattice and
+///   parent lattice are related by an integer transformation and a parent
+///   structure point group operation
+///
+///
+/// Lattice mapping
+/// ---------------
+///
+/// Solving:
+///
+///     L1 * T1 * N = V^{N} * Q^{N} * L2 * T2,
+///
+/// L1: Parent lattice (lattice of reference structure)
+/// T1: Integer transformation matrix to parent superlattice
+///  N: Unimodular matrix (integer matrix, with determinant 1) transforms
+///     parent superlattice vectors to create an equivalent superlattice
+/// L2: Child lattice (lattice of structure to be mapped)
+/// T2: Integer transformation matrix to child superlattice (L2 * T2). When the
+///     parent lattice is the lattice of the primitive structure, then T2 = I.
+/// V^{N}: Stretch, a symmetric matrix that describes the deformation that
+///     maps a de-rotated child superlattice to a parent superlattice.
+/// Q^{N}: Isometry matrix, describes rigid transformation that de-rotates a
+///     superlattice of child. A property of Q^{N} is that (Q^{N}).inverse()
+///     == (Q^{N}).transpose().
+///
+/// Spelling it all out:
+/// - L1: unmapped child lattice
+/// - L1 * T1: a parent superlattice
+/// - L1 * T1 * N: lattice vectors for an equivalent lattice to a parent
+///   superlattice
+/// - L2 * T2: a child superlattice. When the parent lattice is the lattice of
+///   the primitive structure, then T2 = I.
+/// - Q^{N} * (L2 * T2): a de-rotated child superlattice
+/// - V^{N} * Q^{N} * L2 * T2: a de-rotated and undeformed child superlattice
+/// - F^{N} = V^{N} * Q^{N}: the deformation gradient for the transformation
+///   of a superlattice of the child lattice to a superlattice of the parent
+///   lattice (F^{N} = F_child_to_parent). Note that the strain associated
+///   with a configuration, whether as a DoF or in MappedProperties is
+///   defined in the reverse sense, as a transformation of parent (supercell
+///   of prim) to child:
+///       F_parent_to_child * L1 * T1 * N = L2 * T2, where
+///       F_parent_to_child = F_child_to_parent.inverse()
+///   For example, `Ustrain` is defined: F_parent_to_child = R * U.
+///
+/// In general, lattice mapping proceeds using the following steps:
+///
+/// 1) Propose pairs of possible parent and child superlattices, S1 = L1 * T1,
+/// and S2 = L2 * T2, respectively. For mapping to a prim, S2 is fixed to S2 =
+/// L2. The possible values of S1 may be constrained based on whether or not
+/// vacancies are allowed, and if so how many (through the fixed_volume,
+/// min_va_frac, and max_va_frac parameters).
+///
+/// 2) For each pair (S1, S2), find the (N, F^{N}), where S1 * N = F^{N} * S2,
+/// that minimize the strain cost, by looping over unimodular matrices N with
+/// elements in the range -1/+1, -2/+2, etc. and solving for F^{N}. If
+/// requested, the k-best solutions (N, F^{N}) for a given (S1, S2) can be
+/// saved. (Note that the solution is performed by LatticeMap, and that
+/// LatticeMap::deformation_gradient() is F_parent_to_child). See
+/// `isotropic_strain_cost` and `symmetry_breaking_strain_cost` for details on
+/// the strain cost calculation, which can be performed including the entire
+/// lattice deformation, or just the part of the lattice deformation that
+/// breaks the symmetry of the parent structure.
+///
+/// Sub-optimal solutions: Suboptimal lattice mapping solutions are of interest
+/// for several reasons: they might still be optimal total mapping soluations,
+/// they might be important low energy transformation pathways, they might be
+/// optimal mapping solutions when considering only symmetry-breaking lattice
+/// deformations. Therefore, CASM also allows for keeping the k-best scoring
+/// lattice mapping solutions. To avoid keeping any solution, CASM also allows
+/// for specifying a "max_strain_cost" above which lattice mapping solutions are
+/// not kept.
+///
+/// Atomic assignment
+/// -----------------
+///
+/// Solving:
+///
+///     r1[i] + disp[i] = V^{N} * Q^{N} * r2[perm[i]] + trans
+///
+/// r1: Vector of coordinates of atoms in the parent superstructure. The value
+///     `r1[i]` represents the Cartesian coordinate of the i-th atom in the
+///     parent structure.
+/// r2: Vector of coordinates of atoms in the unmapped child superstructure.
+///     The value `r2[i]` represents the Cartesian coordinate of the i-th atom
+///     in the unmapped child structure.
+/// V^{N}, Q^{N}: Lattice transformation, from the unmapped child superlattice
+///     to the parent superlattice, as determined by a solution to the lattice
+///     mapping problem.
+/// perm: Vector of indices that specifies a permutation, a mapping of atoms in
+///     the child structure to atomic sites in the parent structure. If we
+///     define `j = perm[i]`, this indicates that atom 'j' of the child
+///     superstructure maps onto site 'i' of the parent superstructure.  If the
+///     parent superstructure has N sites and child has M<N atoms, vacancies
+///     are designated by values j>=M.
+/// trans: A rigid translation, in Cartesian coordinates, of the de-rotated and
+///     undeformed (mapped) child superstructure that minimizes the atomic
+///     deformation cost.
+/// disp: Displacement associated with the atom on site `i` of the parent
+///     superstructure.
+///
+/// In general, given a lattice mapping solution, the assignment problem is
+/// solved using the following steps:
+///
+/// 1) Considering, in turn, possible translations of minority atoms in the de-
+/// rotated and undeformed child superstructure to sites in which that atom
+/// type is allowed in the parent superstructure, translate the child
+/// superstrucuture into registry with (at least one site of) the parent
+/// superstructure.
+///
+/// 2) Use the Hungarian Method to find the optimal assignment permutation,
+/// specifying the cost of assignment as infinite if atom type is not allowed
+/// on the parent superstructure site, otherwise with a cost based on either
+/// geometric distance or symmetry-breaking distance. See `?` for more details
+/// on the atomic deformation cost calculations.
+///
+/// 3) After the optimal assignment is determined, subtract the average
+/// displacement from the initial proposed  translation (checking that the
+/// average total displacement is zero and performing corrections for periodic
+/// boundary effects if this is not the case), and re-calculate the atomic
+/// deformation cost using the same assignment. This results in an optimal
+/// assignment solution (perm, trans).
+///
+/// Sub-optimal solutions: As with lattice mapping, sub-optimal assingment
+/// solutions may be required. In this case, Murty's algorithm is applied (which
+/// systematically forces some assignments) to enumerate the k-best assignment
+/// solutions (perm, trans).
+///
+///
+/// --- Total mapping: ---
+///
+/// The optimal total mapping solution, a combination of a lattice mapping, and
+/// an assignment mapping calculated given that lattice mapping, is determined
+/// by minimizing a total cost function which combines the lattice deformation
+/// cost and atomic deformation costs:
+///
+///     total_cost = lattice_weight * lattice_deformation_cost +
+///                  atomic_weight * atomic_deformation_cost
+///
+///
 
 //*******************************************************************************************
 
@@ -831,12 +1085,15 @@ std::set<MappingNode> StrucMapper::_seed_from_vol_range(
 
 /// \brief Find the k-best mappings of a child structure onto the parent
 /// structure, assuming that the child lattice and parent lattice are related
-/// by an integer transformation
+/// by an integer transformation and a parent structure point group operation
 ///
 /// Similar to `map_deformed_struc`, but with the following modification:
 /// - A single lattice mapping, `imposed_node`, is calculated from the
 ///   assumption that the child lattice and parent lattice are related
-///   by an integer transformation. TODO: explain this more
+///   by an integer transformation, and the structures are related by a parent
+///   structure point group operation. Thus, the mapping will satisfy L1 * T1 =
+///   Q * L2 * T2, where Q is restricted to parent structure point group
+///   operations.
 /// - Parameters `min_va_frac`, `max_va_frac`, `max_volumne_change`,
 ///   `soft_va_limit`, `add_allowed_lattice`, and `set_filter` have no effect.
 /// - All assignment is the same as in `map_deformed_struc`.
@@ -928,9 +1185,10 @@ std::set<MappingNode> StrucMapper::map_ideal_struc(
 ///     species, the child structure, and `soft_va_limit`.
 ///   - If lattices have been added via "add_allowed_lattice", then for each
 ///     volume in the range, only "allowed_lattices" are considered; else
-///     enumerate all lattices at that volume
-///   - If a lattice filter has been set, then lattices must pass the lattice
-///     filter
+///     at each volume enumerate canonical parent superlattices (using the point
+///     group of the provided parent structure factor group).
+///   - If a lattice filter has been set, then enumerated lattices must pass
+///     the lattice filter.
 /// - Given an initial parent superlattice, the k-best scoring lattice mapping
 ///   solutions (N, F^{N}), where (L1 * T1) * N = F^{N} * L2 are kept and used
 ///   as the starting point for atomic assignment. The symmetry-breaking
@@ -1337,10 +1595,10 @@ std::set<MappingNode> StrucMapper::_seed_k_best_from_super_lats(
     for (Lattice const &p_lat : _parent_scels) {
       int n_child_atom = round(std::abs(volume(c_lat) / volume(c_prim_lat))) *
                          _n_species(child_struc);
-      LatticeMap lattice_map(
-          p_lat, c_lat, n_child_atom, this->lattice_transformation_range(),
-          calculator().point_group(), c_lat_factor_group, m_strain_gram_mat,
-          max_lattice_cost, symmetrize_lattice_cost());
+      LatticeMap lattice_map(p_lat, c_lat, this->lattice_transformation_range(),
+                             calculator().point_group(), c_lat_factor_group,
+                             max_lattice_cost, symmetrize_lattice_cost(),
+                             cost_tol());
 
       // lattice_map is initialized to first mapping better than
       // 'max_lattice_cost', if such a mapping exists We will continue checking

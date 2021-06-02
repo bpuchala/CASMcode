@@ -34,23 +34,21 @@ namespace StrucMapping {
 // - Pass all StrucMapper parameters via constructor or via
 // `map_X` function call and remove StrucMapper parameter modifiers such as
 // `StrucMapper::set_filter` or `StrucMapper::set_max_va_frac`.
-// - For `map_X` functions, document more clearly what parameters effect the
-// superlattices considered for mapping. For example, is it clear that
-// `map_ideal_struc` and `map_deformed_struc_impose_lattice_node` ignore the
-// min_va_frac, max_va_frac, and lattice filter parameters but
-// `map_deformed_struc_impose_lattice_vols` does not ignore them? Which `map_X`
-// methods use lattices added by `add_allowed_lattice`?
 // - Remove StrucMapping::Options, only robust and soft_va_limit seems to
 // still be in use
 // - Find an alternative to the use of StrucMapCalculatorInterface, or reduce
 // it to only the virtual members and make it optional.
+// - Document more explicitly the conversion of std::set<MappingNode> results
+// to SymOpVector
+// - Document use of k=0 mapping
 
 /// Lattice filter function for structure mapping
 ///
 /// The filter function is of the form
-/// `bool filter(parent_lattice, proposed_lattice)`, where parent_lattice is
-/// the primitive lattice of the parent structure, and proposed_lattice is a
-/// proposed superlattice of the parent structure
+/// `bool filter(parent_prim_lattice, proposed_parent_superlattice)`, where
+/// `parent_prim_lattice` is the lattice of the primitive parent structure, and
+/// `proposed_parent_superlattice` is a proposed superlattice of the parent
+/// structure
 typedef std::function<bool(Lattice const &, Lattice const &)>
     LatticeFilterFunction;
 
@@ -293,8 +291,7 @@ struct AssignmentNode {
 /// \brief true if time_reversal and translation are identical
 bool identical(AssignmentNode const &A, AssignmentNode const &B);
 
-/// Data structure holding a potential mapping, which consists of deformation,
-/// occupation array, and displacement field
+/// \brief Data structure holding a mapping between structures
 struct MappingNode {
   // typedefs to provide flexibility if we eventually change to a
   // Eigen::Matrix<3,Eigen::Dynamic>
@@ -352,7 +349,8 @@ struct MappingNode {
   /// molecule at its j'th molecular site
   MoleculeMap mol_map;
 
-  /// list of assigned molecule names
+  /// A list of assigned molecule names as the pair {species_name, index in
+  /// allowed_species for the parent structure basis site it is mapped to}
   std::vector<MoleculeLabel> mol_labels;
 
   /// \brief Static constructor to build an invalid MappingNode, can be used as
@@ -441,12 +439,8 @@ inline bool get_time_reversal(MappingNode const &_node) {
   return _node.time_reversal();
 }
 
-/// A class for mapping an arbitrary 'child' crystal structure as a deformation
-/// of a 'parent' crystal structure StrucMapper manages options for the mapping
-/// algorithm and mapping cost function It also caches some information about
-/// supercell lattices to improve speed of mapping multiple children crystals
-/// onto a single parent structure
-///
+/// \brief Implements a method for mapping a "child" crystal structure as a
+/// deformation of a reference "parent" crystal structure.
 class StrucMapper {
  public:
   using LatMapType = std::map<Index, std::vector<Lattice>>;
@@ -638,7 +632,7 @@ class StrucMapper {
 
   /// \brief Find the k-best mappings of a child structure onto the parent
   /// structure, assuming that the child lattice and parent lattice are related
-  /// by an integer transformation
+  /// by an integer transformation and a parent structure point group operation
   std::set<MappingNode> map_ideal_struc(
       const SimpleStructure &child_struc, Index k = 1,
       double max_cost = StrucMapping::big_inf(), double min_cost = -TOL,
@@ -724,8 +718,6 @@ class StrucMapper {
   std::pair<Index, Index> _vol_range(const SimpleStructure &child_struc) const;
 
   notstd::cloneable_ptr<StrucMapCalculatorInterface> m_calc_ptr;
-
-  Eigen::MatrixXd m_strain_gram_mat;
 
   double m_lattice_weight;
   double m_max_volume_change;

@@ -53,9 +53,9 @@
 /// "parent structure" (reference). Lattice mapping is done first, then atomic
 /// assignment for each potential lattice mapping solution. A variety of
 /// settings control which lattice mappings are considered, how many solutions
-/// are stored, and how they are scored.
+/// are stored, and how they are scored. See `StrucMapper` for details.
 ///
-/// 2) The best scoring mappings is are used to create "mapped structures",
+/// 2) The best scoring mappings are used to create "mapped structures",
 /// which must be de-rotated according to the mapping, expressed in terms of
 /// molecules, ordered according to the atomic assignment and to match the
 /// ordering of sites in the appropriate supercell, and have displacements,
@@ -67,133 +67,6 @@
 /// 3) The "mapped configuration" may be transformed to an equivalent "final
 /// configuration" by a change of supercell and/or rotation and permutation
 /// within the supercell, as specified by method settings.
-///
-///
-/// Lattice mapping
-/// ---------------
-///
-/// Solving:
-///
-///     L1 * T1 * N = V^{N} * Q^{N} * L2 * T2,
-///
-/// L1: Parent lattice (lattice of reference structure)
-/// T1: Integer transformation matrix to parent superlattice
-///  N: Unimodular matrix (integer matrix, with determinant 1) transforms
-///     parent superlattice vectors to create an equivalent superlattice
-/// L2: Child lattice (lattice of structure to be mapped)
-/// T2: Integer transformation matrix to child superlattice (L2 * T2). When the
-///     parent lattice is the lattice of the primitive structure, then T2 = I.
-/// V^{N}: Stretch, a symmetric matrix that describes the deformation that
-///     maps a de-rotated child superlattice to a parent superlattice.
-/// Q^{N}: Isometry matrix, describes rigid transformation that de-rotates a
-///     superlattice of child. A property of Q^{N} is that (Q^{N}).inverse()
-///     == (Q^{N}).transpose().
-///
-/// Spelling it all out:
-/// - L1: unmapped child lattice
-/// - L1 * T1: a parent superlattice
-/// - L1 * T1 * N: lattice vectors for an equivalent lattice to a parent
-///   superlattice
-/// - L2 * T2: a child superlattice. When the parent lattice is the lattice of
-///   the primitive structure, then T2 = I.
-/// - Q^{N} * (L2 * T2): a de-rotated child superlattice
-/// - V^{N} * Q^{N} * L2 * T2: a de-rotated and undeformed child superlattice
-/// - F^{N} = V^{N} * Q^{N}: the deformation gradient for the transformation
-///   of a superlattice of the child lattice to a superlattice of the parent
-///   lattice (F^{N} = F_child_to_parent). Note that the strain associated
-///   with a configuration, whether as a DoF or in MappedProperties is
-///   defined in the reverse sense, as a transformation of parent (supercell
-///   of prim) to child:
-///       F_parent_to_child * L1 * T1 * N = L2 * T2, where
-///       F_parent_to_child = F_child_to_parent.inverse()
-///   For example, `Ustrain` is defined: F_parent_to_child = R * U.
-///
-/// In general, lattice mapping proceeds using the following steps:
-///
-/// 1) Propose pairs of possible parent and child superlattices, S1 = L1 * T1,
-/// and S2 = L2 * T2, respectively. For mapping to a prim, S2 is fixed to S2 =
-/// L2. The possible values of S1 may be constrained based on whether or not
-/// vacancies are allowed, and if so how many (through the fixed_volume,
-/// min_va_frac, and max_va_frac parameters).
-///
-/// 2) For each pair (S1, S2), find the (N, F^{N}), where S1 * N = F^{N} * S2,
-/// that minimize the strain cost, by looping over unimodular matrices N with
-/// elements in the range -1/+1, -2/+2, etc. and solving for F^{N}. If
-/// requested, the k-best solutions (N, F^{N}) for a given (S1, S2) can be
-/// saved. (Note that the solution is performed by LatticeMap, and that
-/// LatticeMap::deformation_gradient() is F_parent_to_child). See
-/// `StrainCostCalculator` for details on the strain cost calculation, which
-/// can be performed including the entire lattice deformation, or just the part
-/// of the lattice deformation that breaks the symmetry of the parent structure.
-///
-/// Sub-optimal solutions: Suboptimal lattice mapping solutions are of interest
-/// for several reasons: they might still be optimal total mapping soluations,
-/// they might be important low energy transformation pathways, they might be
-/// optimal mapping solutions when considering only symmetry-breaking lattice
-/// deformations. Therefore, CASM also allows for keeping the k-best scoring
-/// lattice mapping solutions. To avoid keeping any solution, CASM also allows
-/// for specifying a "max_strain_cost" above which lattice mapping solutions are
-/// not kept.
-///
-/// Atomic assignment
-/// -----------------
-///
-/// Solving:
-///
-///     r1[i] + disp[i] = V^{N} * Q^{N} * r2[perm[i]] + trans
-///
-/// r1: Vector of coordinates of atoms in the parent superstructure
-/// r2: Vector of coordinates of atoms in the child (unmapped) superstructure
-/// V^{N}, Q^{N}: Lattice transformation, from child superlattice to parent
-///     superlattice, as determined by a solution to the lattice mapping
-///     problem.
-/// perm: Vector of indices that specifies a permutation, a mapping of atoms in
-/// the child structure to atomic sites in the parent structure. If we define `j
-/// = perm[i]`, this indicates that atom 'j' of the child superstructure maps
-/// onto site 'i' of the parent superstructure.  If the parent superstructure
-/// has N sites and child has M<N atoms, vacancies are designated by values
-/// j>=M. trans: A rigid translation of the de-rotated and undeformed child
-/// superstructure that minimizes the atomic deformation cost, time_reversal:
-/// Currently fixed to false
-///
-/// In general, given a lattice mapping solution, the assignment problem is
-/// solved using the following steps:
-///
-/// 1) Considering, in turn, possible translations of minority atoms in the de-
-/// rotated and undeformed child superstructure to sites in which that atom
-/// type is allowed in the parent superstructure, translate the child
-/// superstrucuture into registry with (at least one site of) the parent
-/// superstructure.
-///
-/// 2) Use the Hungarian Method to find the optimal assignment permutation,
-/// specifying the cost of assignment as infinite if atom type is not allowed
-/// on the parent superstructure site, otherwise with a cost based on either
-/// geometric distance or symmetry-breaking distance. See `?` for more details
-/// on the atomic deformation cost calculations.
-///
-/// 3) After the optimal assignment is determined, subtract the average
-/// displacement from the initial proposed  translation (checking that the
-/// average total displacement is zero and performing corrections for periodic
-/// boundary effects if this is not the case), and re-calculate the atomic
-/// deformation cost using the same assignment. This results in an optimal
-/// assignment solution (perm, trans).
-///
-/// Sub-optimal solutions: As with lattice mapping, sub-optimal assingment
-/// solutions may be required. In this case, Murty's algorithm is applied (which
-/// systematically forces some assignments) to enumerate the k-best assignment
-/// solutions (perm, trans).
-///
-///
-/// --- Total mapping: ---
-///
-/// The optimal total mapping solution, a combination of a lattice mapping, and
-/// an assignment mapping calculated given that lattice mapping, is determined
-/// by minimizing a total cost function which combines the lattice deformation
-/// cost and atomic deformation costs:
-///
-///     total_cost = lattice_weight * lattice_deformation_cost +
-///                  atomic_weight * atomic_deformation_cost
-///
 ///
 /// --- Making the mapped child structure: ---
 ///

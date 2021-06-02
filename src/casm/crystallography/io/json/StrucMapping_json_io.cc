@@ -48,6 +48,10 @@ jsonParser &to_json(xtal::MappingNode const &mapping_node, jsonParser &json) {
       lattice_node.parent.superlattice().lat_column_mat();
   json["parent_transformation_matrix_to_super"] =
       lattice_node.parent.transformation_matrix_to_super();
+  json["mapped_child_supercell_lattice_column_matrix"] =
+      lattice_node.child.superlattice().lat_column_mat();
+  json["mapped_child_transformation_matrix_to_super"] =
+      lattice_node.child.transformation_matrix_to_super();
   json["lattice_deformation_cost"] = lattice_node.cost;
   json["lattice_deformation_cost_method"] = lattice_node.cost_method;
 
@@ -62,9 +66,15 @@ jsonParser &to_json(xtal::MappingNode const &mapping_node, jsonParser &json) {
   json["atom_displacement"] = mapping_node.atom_displacement.transpose();
   json["atom_permutation"] = mapping_node.atom_permutation;
   json["mol_map"] = mapping_node.mol_map;
-  json["mol_labels"] = mapping_node.mol_labels;
+  json["mol_names"] = jsonParser::array();
+  json["mol_indices"] = jsonParser::array();
+  for (const auto &pair : mapping_node.mol_labels) {
+    json["mol_names"].push_back(pair.first);
+    json["mol_indices"].push_back(pair.second);
+  }
 
   // total mapping data:
+  json["is_valid"] = mapping_node.is_valid;
   json["lattice_weight"] = mapping_node.lattice_weight;
   json["atomic_weight"] = mapping_node.atomic_weight;
   json["total_cost"] = mapping_node.cost;

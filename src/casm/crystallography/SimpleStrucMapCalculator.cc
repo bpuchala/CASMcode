@@ -13,6 +13,9 @@
 #include "casm/crystallography/io/VaspIO.hh"
 #include "casm/misc/algorithm.hh"
 
+// debugging:
+#include "casm/casm_io/container/stream_io.hh"
+
 namespace CASM {
 namespace xtal {
 namespace Local {
@@ -23,8 +26,40 @@ static Coordinate _make_superlattice_coordinate(
   return make_superlattice_coordinate(ijk, superlattice);
 }
 
+/// Populates `_node.atom_permutation`, `_node.atom_displacement` from
+/// `_node.atomic_node.permutation()` and `_node.atomic_node.translation`
+///
+void _populate_displacement(
+    MappingNode &_node,
+    SimpleStructure::Info const &p_info,  // this->struc_info(parent())
+    SimpleStructure::Info const &c_info,  // this->struc_info(unmapped_child))
+    Superlattice const &parent_superlatice,
+    Superlattice const &mapped_child_superlattice);
+
+/// Sets `node.mol_map` and `node.mol_labels` based on `node.atom_permutation`
+///
+/// \param node MappingNode being set
+/// \param unmapped_child Child structure being mapped
+/// \param parent_superlattice A superstructure of parent (i.e. from
+///     LatticeNode.parent) which the unmapped_child is being mapped to.
+/// \param mapped_child_superlattice A mapped superstructure of child (i.e.
+///     from LatticeNode.child) which the unmapped_child is being mapped to.
+/// \param allowed_species Names of allowed species on each parent structure
+///     site. Empty default is not allowed. If the assignment specified by
+///     `node.atom_permutation` is not allowed, as determined from
+///     `allowed_species`, this method returns false.
+///
+/// \returns True if succesful, false otherwise.
+///
+bool _assign_molecules(
+    MappingNode &node, SimpleStructure const &unmapped_child,
+    Superlattice const &parent_superlatice,
+    Superlattice const &mapped_child_superlattice,
+    std::vector<std::vector<std::string>> const &allowed_species);
+
 }  // namespace Local
 
+/// Constructs a list of prospective mapping translations
 std::vector<Eigen::Vector3d> SimpleStrucMapCalculator::translations(
     MappingNode const &_node, SimpleStructure const &ichild_struc) const {
   SimpleStructure::Info const &p_info(this->struc_info(parent()));
@@ -102,9 +137,11 @@ std::vector<Eigen::Vector3d> SimpleStrucMapCalculator::translations(
 
 //*******************************************************************************************
 
-/// \brief Creates copy of _child_struc by applying isometry, similarity,
-/// translation, and site permutation of _node Result has all sites within the
-/// unit cell
+/// Creates a copy of the child structure and applies mapping
+///
+/// Result has all sites within the unit cell. After setting resolution, the
+/// lattice and sites of `_child_struc` match the setting of the parent
+/// structure onto which it has been mapped (as defined by `_node`).
 SimpleStructure SimpleStrucMapCalculator::resolve_setting(
     MappingNode const &_node, SimpleStructure const &_child_struc) const {
   SimpleStructure::Info const &child_atom_info(_child_struc.atom_info);
@@ -137,6 +174,12 @@ SimpleStructure SimpleStrucMapCalculator::resolve_setting(
 
   /// mol_map[i] lists atom indices of parent superstructure that comprise the
   /// molecule at its i'th molecular site
+
+  // r1[i] + disp[i] = V^{N} * Q^{N} * r2[perm[i]] + trans
+
+  // result.mol_info.coord(i) = U * (r1[i] + disp[i])
+  //                          = Q * r2[perm[i]] + U * trans
+
   {
     for (Index i = 0; i < _node.mol_map.size(); ++i) {  // i: site index
       std::set<Index> const &mol = _node.mol_map[i];
@@ -228,11 +271,30 @@ SimpleStructure SimpleStrucMapCalculator::resolve_setting(
 
 //***************************************************************************************************
 
+/// Sets MappingNode data based on lattice and atomic mapping results
+///
+/// If succesfully mapped, `finalize` will set:
+/// - node.atom_permutation
+/// - node.atom_displacement
+/// - node.translation
+/// - node.mol_map
+/// - node.mol_labels
+/// - node.is_valid: True if Molecules can be assigned
+/// - node.atomic_node.cost
+/// - node.atomic_node.cost_method
+/// - node.cost
+/// - node.cost_method
 void SimpleStrucMapCalculator::finalize(
     MappingNode &node, SimpleStructure const &_child_struc,
     bool const &symmetrize_atomic_cost) const {
-  populate_displacement(node, _child_struc);
-  node.is_valid = this->_assign_molecules(node, _child_struc);
+  Local::_populate_displacement(
+      node, this->struc_info(parent()), this->struc_info(_child_struc),
+      node.lattice_node.parent, node.lattice_node.child);
+
+  node.is_valid = Local::_assign_molecules(
+      node, _child_struc, node.lattice_node.parent, node.lattice_node.child,
+      this->_allowed_species());
+
   if (!symmetrize_atomic_cost ||
       this->sym_invariant_displacement_modes().size() == 0) {
     node.atomic_node.cost =
@@ -283,86 +345,13 @@ void SimpleStrucMapCalculator::finalize(
   return;
 }
 
-//****************************************************************************************************************
-//            Assignment Problem methods
-//****************************************************************************************************************
-
-void SimpleStrucMapCalculator::populate_displacement(
-    MappingNode &_node, SimpleStructure const &child_struc) const {
-  const auto &pgrid = _node.lattice_node.parent;
-  const auto &cgrid = _node.lattice_node.child;
-  SimpleStructure::Info const &p_info(this->struc_info(parent()));
-  SimpleStructure::Info const &c_info(this->struc_info(child_struc));
-  // TODO: Just use linear index converter? could make things more obvious
-  impl::OrderedLatticePointGenerator child_index_to_unitcell(
-      cgrid.transformation_matrix_to_super());
-  impl::OrderedLatticePointGenerator parent_index_to_unitcell(
-      pgrid.transformation_matrix_to_super());
-
-  _node.atom_permutation = _node.atomic_node.permutation();
-
-  // initialize displacement matrix with all zeros
-  _node.atom_displacement.setZero(3, pgrid.size() * p_info.size());
-
-  Index cN = c_info.size() * cgrid.size();
-  // Populate displacements given as the difference in the Coordinates
-  // as described by node.permutation.
-  for (Index i = 0; i < _node.atom_permutation.size(); i++) {
-    // If we are dealing with a vacancy, its displacment must be zero.
-    // if(_node.atom_permutation(i) >= child_struc.n_mol()) {
-    //  --DO NOTHING--
-    //}
-
-    // Using min_dist routine to calculate the displacement vector that
-    // corresponds to the distance used in the Cost Matrix and Hungarian
-    // Algorithm The method returns the displacement vector pointing from the
-    // IDEAL coordinate to the RELAXED coordinate
-    Index j = _node.atom_permutation[i];
-    if (j < cN) {
-      // Initialize displacement as child coordinate
-      Coordinate disp_coord(
-          Local::_make_superlattice_coordinate(j % cgrid.size(), cgrid,
-                                               child_index_to_unitcell)
-              .const_cart(),
-          pgrid.superlattice(), CART);
-
-      disp_coord.cart() +=
-          c_info.cart_coord(j / cgrid.size()) + _node.atomic_node.translation;
-
-      Coordinate parent_coord = Local::_make_superlattice_coordinate(
-          i % pgrid.size(), pgrid, parent_index_to_unitcell);
-      parent_coord.cart() += p_info.cart_coord(i / pgrid.size());
-
-      // subtract parent_coord to get displacement
-      disp_coord -= parent_coord;
-      disp_coord.voronoi_within();
-
-      _node.atom_displacement.col(i) = disp_coord.const_cart();
-    }
-  }
-
-  Eigen::Vector3d avg_disp =
-      _node.atom_displacement.rowwise().sum() / max<double>(double(cN), 1.);
-
-  for (Index i = 0; i < _node.atom_permutation.size(); i++) {
-    if (_node.atom_permutation[i] < cN) {
-      _node.atom_displacement.col(i) -= avg_disp;
-    }
-  }
-
-  _node.atomic_node.translation -= avg_disp;
-  // End of filling displacements
-}
-
-//****************************************************************************************
-/*
- * Finding the cost_matrix given the relaxed structure
- * This will always return a square matrix with the extra elements
- * reflecting the vacancies specified in the ideal supercell.
- * Costs are calculated in context of the lattice.
- * cost_matrix(i,j) is cost of mapping child site 'j' onto parent site 'i'
- */
-//****************************************************************************************
+/// Populates the cost matrix for the atomic assignment problem
+///
+/// This will always return a square matrix with the extra elements reflecting
+/// the vacancies specified in the ideal supercell. Costs are calculated in
+/// context of the lattice. The element `cost_matrix(i,j)` is the cost of
+/// mapping child site 'j' onto parent site 'i'.
+///
 bool SimpleStrucMapCalculator::populate_cost_mat(
     MappingNode &_node, SimpleStructure const &child_struc) const {
   const auto &pgrid = _node.lattice_node.parent;
@@ -472,38 +461,145 @@ bool SimpleStrucMapCalculator::populate_cost_mat(
   return true;
 }
 
-//****************************************************************************************
+namespace Local {
 
-bool SimpleStrucMapCalculator::_assign_molecules(
-    MappingNode &node, SimpleStructure const &_child_struc) const {
-  auto const &cgrid(node.lattice_node.child);
-  auto const &pgrid(node.lattice_node.parent);
+/// Populates `_node.atom_permutation`, `_node.atom_displacement` from
+/// `_node.atomic_node.permutation()` and `_node.atomic_node.translation`
+///
+void _populate_displacement(
+    MappingNode &_node,
+    SimpleStructure::Info const &p_info,  // this->struc_info(parent())
+    SimpleStructure::Info const &c_info,  // this->struc_info(unmapped_child))
+    Superlattice const &parent_superlatice,
+    Superlattice const &mapped_child_superlattice) {
+  const auto &pgrid = parent_superlatice;
+  const auto &cgrid = mapped_child_superlattice;
+
+  // TODO: Just use linear index converter? could make things more obvious
+  impl::OrderedLatticePointGenerator child_index_to_unitcell(
+      cgrid.transformation_matrix_to_super());
+  impl::OrderedLatticePointGenerator parent_index_to_unitcell(
+      pgrid.transformation_matrix_to_super());
+
+  _node.atom_permutation = _node.atomic_node.permutation();
+
+  // initialize displacement matrix with all zeros
+  _node.atom_displacement.setZero(3, pgrid.size() * p_info.size());
+
+  Index cN = c_info.size() * cgrid.size();
+  // Populate displacements given as the difference in the Coordinates
+  // as described by node.permutation.
+  for (Index i = 0; i < _node.atom_permutation.size(); i++) {
+    // If we are dealing with a vacancy, its displacment must be zero.
+    // if(_node.atom_permutation(i) >= child_struc.n_mol()) {
+    //  --DO NOTHING--
+    //}
+
+    // Using min_dist routine to calculate the displacement vector that
+    // corresponds to the distance used in the Cost Matrix and Hungarian
+    // Algorithm The method returns the displacement vector pointing from the
+    // IDEAL coordinate to the RELAXED coordinate
+    Index j = _node.atom_permutation[i];
+    if (j < cN) {
+      // Initialize displacement as child coordinate
+      Coordinate disp_coord(
+          Local::_make_superlattice_coordinate(j % cgrid.size(), cgrid,
+                                               child_index_to_unitcell)
+              .const_cart(),
+          pgrid.superlattice(), CART);
+
+      disp_coord.cart() +=
+          c_info.cart_coord(j / cgrid.size()) + _node.atomic_node.translation;
+
+      Coordinate parent_coord = Local::_make_superlattice_coordinate(
+          i % pgrid.size(), pgrid, parent_index_to_unitcell);
+      parent_coord.cart() += p_info.cart_coord(i / pgrid.size());
+
+      // subtract parent_coord to get displacement
+      disp_coord -= parent_coord;
+      disp_coord.voronoi_within();
+
+      _node.atom_displacement.col(i) = disp_coord.const_cart();
+    }
+  }
+
+  Eigen::Vector3d avg_disp =
+      _node.atom_displacement.rowwise().sum() / max<double>(double(cN), 1.);
+
+  for (Index i = 0; i < _node.atom_permutation.size(); i++) {
+    if (_node.atom_permutation[i] < cN) {
+      _node.atom_displacement.col(i) -= avg_disp;
+    }
+  }
+
+  _node.atomic_node.translation -= avg_disp;
+  // End of filling displacements
+}
+
+/// Sets `node.mol_map` and `node.mol_labels` based on `node.atom_permutation`
+///
+/// \param node MappingNode being set
+/// \param unmapped_child Child structure being mapped
+/// \param parent_superlattice A superstructure of parent (i.e. from
+///     LatticeNode.parent) which the unmapped_child is being mapped to.
+/// \param mapped_child_superlattice A mapped superstructure of child (i.e.
+///     from LatticeNode.child) which the unmapped_child is being mapped to.
+/// \param allowed_species Names of allowed species on each parent structure
+///     site. Empty default is not allowed. If the assignment specified by
+///     `node.atom_permutation` is not allowed, as determined from
+///     `allowed_species`, this method returns false.
+///
+/// \returns True if succesful, false otherwise.
+///
+bool _assign_molecules(
+    MappingNode &node, SimpleStructure const &unmapped_child,
+    Superlattice const &parent_superlatice,
+    Superlattice const &mapped_child_superlattice,
+    std::vector<std::vector<std::string>> const &allowed_species) {
+  auto const &cgrid(mapped_child_superlattice);
+  auto const &pgrid(parent_superlatice);
+
+  Index parent_superlattice_volume = parent_superlatice.size();
+  Index mapped_child_superlattice_volume = mapped_child_superlattice.size();
+
+  // mol_map[j] lists atom indices of parent superstructure that comprise the
+  // molecule at its j'th molecular site
   node.mol_map.clear();
   node.mol_map.reserve(node.atom_permutation.size());
+
+  /// mol_labels is a list of assigned molecule names as the pair
+  /// {species_name, occupant index for the parent structure basis site it is
+  /// mapped to}
   node.mol_labels.clear();
   node.mol_labels.reserve(node.atom_permutation.size());
+
+  // j increments from 0 to number of sites in superstructure, to set `mol_map`
+  //
+
   Index j = 0;
   for (Index i : node.atom_permutation) {
     node.mol_map.emplace_back(MappingNode::AtomIndexSet({j}));
-    Index bc = i / cgrid.size();
-    std::string sp = "Va";
-    if (bc < _child_struc.atom_info.size())
-      sp = _child_struc.atom_info.names[bc];
-    auto occ_itr =
-        std::find(this->_allowed_species()[j / pgrid.size()].begin(),
-                  this->_allowed_species()[j / pgrid.size()].end(), sp);
-    // Index occ_i = find_index(this->_allowed_species()[j / pgrid.size()], sp);
-    // if (occ_i == this->_allowed_species()[j / pgrid.size()].size())
-    //   return false;
-    if (occ_itr == this->_allowed_species()[j / pgrid.size()].end())
-      return false;
+    Index prim_parent_index = j / parent_superlattice_volume;
+    Index unmapped_child_index = i / mapped_child_superlattice_volume;
 
-    node.mol_labels.emplace_back(
-        sp, occ_itr - this->_allowed_species()[j / pgrid.size()].begin());
+    std::string species_name = "Va";
+    if (unmapped_child_index < unmapped_child.atom_info.size())
+      species_name = unmapped_child.atom_info.names[unmapped_child_index];
+
+    auto begin = allowed_species[prim_parent_index].begin();
+    auto end = allowed_species[prim_parent_index].end();
+    auto it = std::find(begin, end, species_name);
+    if (it == end) {
+      return false;
+    }
+    node.mol_labels.emplace_back(species_name, std::distance(begin, it));
     ++j;
   }
 
   return true;
 }
+
+}  // namespace Local
+
 }  // namespace xtal
 }  // namespace CASM
