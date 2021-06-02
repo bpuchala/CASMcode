@@ -15,10 +15,9 @@ MappedProperties copy_apply(PermuteIterator const &op,
   MappedProperties result;
   for (auto it = props.global.begin(); it != props.global.end(); ++it) {
     AnisoValTraits traits(AnisoValTraits::name_suffix(it->first));
-    result.global[it->first] =
-        traits.symop_to_matrix(symop.matrix(), symop.tau(),
-                               symop.time_reversal()) *
-        it->second;
+    Eigen::MatrixXd matrix = traits.symop_to_matrix(symop.matrix(), symop.tau(),
+                                                    symop.time_reversal());
+    result.global[it->first] = matrix * it->second;
   }
 
   Permutation tperm(op.combined_permute());
@@ -68,6 +67,16 @@ std::set<std::string> make_dof_managed_properties(
   return dof_managed_properties;
 }
 
+Eigen::VectorXd as_column_major_vector(Eigen::MatrixXd const &matrix) {
+  Eigen::MatrixXd M = matrix;
+  return Eigen::Map<Eigen::VectorXd>(M.data(), M.size());
+}
+
+Eigen::MatrixXd as_column_major_matrix(Eigen::VectorXd vector, int rows,
+                                       int cols) {
+  return Eigen::Map<Eigen::MatrixXd>(vector.data(), rows, cols);
+}
+
 }  // namespace
 
 /// Construct MappedProperties from a mapped SimpleStructure
@@ -104,7 +113,8 @@ MappedProperties make_mapped_properties(
       // If "*strain" is a property, rather than a DoF, we will also store the
       // lattice
       if (prop.first.find("strain") != std::string::npos) {
-        result.global["latvec"] = mapped_structure.lat_column_mat;
+        result.global["latvec"] =
+            as_column_major_vector(mapped_structure.lat_column_mat);
       }
     }
   }

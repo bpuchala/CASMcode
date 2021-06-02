@@ -261,7 +261,7 @@ SimpleStructure SimpleStrucMapCalculator::resolve_setting(
   // Add new global property -- isometry
   {
     AnisoValTraits ttraits("isometry");
-    // unroll to 9-element vector
+    // unroll to 9-element vector, column-major order
     result.properties[ttraits.name()] = Eigen::Map<const Eigen::VectorXd>(
         _node.lattice_node.isometry.data(), ttraits.dim());
   }
