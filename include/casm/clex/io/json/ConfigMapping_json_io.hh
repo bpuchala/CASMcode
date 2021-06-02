@@ -7,10 +7,8 @@
 #include "casm/global/enum.hh"
 
 namespace CASM {
-namespace ConfigMapping {
-struct Settings;
-}
 struct ConfigMapperResult;
+struct ConfigMapperSettings;
 class Structure;
 class Supercell;
 class jsonParser;
@@ -19,7 +17,7 @@ class jsonParser;
 
 /// Read ConfigMapping::Settings from JSON
 jsonParser const &from_json(
-    ConfigMapping::Settings &_set, jsonParser const &_json,
+    ConfigMapperSettings &_set, jsonParser const &_json,
     std::shared_ptr<Structure const> const &shared_prim,
     DataFormatterDictionary<Supercell> const &supercell_query_dict);
 

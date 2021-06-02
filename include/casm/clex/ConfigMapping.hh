@@ -26,44 +26,77 @@ class Configuration;
 class ConfigDoF;
 class SupercellSymInfo;
 
-namespace ConfigMapping {
-
 /// \brief Struct with optional parameters for Config Mapping
 /// Specifies default parameters for all values, in order to simplify
 /// parsing from JSON
 ///
-/// There are essentially 5 modes for structure mapping:
+/// There are 5 choices for the lattice-mapping portion of the mapping method.
+/// The choice of one of these methods determines which other parameters have
+/// an effect. One and only one must be chosen. The methods are:
 ///
-/// Method 1: hint && 'ideal' option (exactly known lattice mapping)
-/// Method 2: hint && 'fix_lattice' option (exactly known lattice)
-/// Method 3: hint && 'fix_volume' option (exactly known volume)
-/// Method 4: no hint && 'ideal' option (ideal integer supercell of prim)
-/// Method 5: otherwise, most general mapping
-
-struct Settings {
-  Settings(double _lattice_weight = 0.5, bool _ideal = false,
-           bool _strict = false, bool _robust = false,
-           // bool _primitive_only = false,
-           bool _fix_volume = false, bool _fix_lattice = false,
-           Index _k_best = 1, std::vector<Lattice> _forced_lattices = {},
-           xtal::StrucMapping::LatticeFilterFunction _filter =
-               xtal::StrucMapping::LatticeFilterFunction(),
-           double _cost_tol = CASM::TOL, double _min_va_frac = 0.,
-           double _max_va_frac = 0.5, double _max_vol_change = 0.3)
-      : lattice_weight(_lattice_weight),
-        ideal(_ideal),
-        strict(_strict),
-        robust(_robust),
-        // primitive_only(_primitive_only),
-        fix_volume(_fix_volume),
-        fix_lattice(_fix_lattice),
-        k_best(_k_best),
-        forced_lattices(_forced_lattices),
-        filter(_filter),
-        cost_tol(_cost_tol),
-        min_va_frac(_min_va_frac),
-        max_va_frac(_max_va_frac),
-        max_vol_change(_max_vol_change) {}
+/// 1. fix_ideal = true: Force lattice mapping solutions of the form
+///     L1 * T = Q * L2, where
+///     L1 = the prim lattice
+///     L2 = child.lat_column_mat
+///      T = an integer transformation matrix, to be determined
+///      Q = isometry matrix, constrained to be an elemenet of the prim
+///          factor group, to be determined
+///
+/// 2. fix_lattice_mapping = true: Force lattice mapping solutions of the form
+///     S1 = V * Q * L2, where
+///     S1 = this->configuration_lattice
+///     L2 = child.lat_column_mat
+///   V, Q = stretch and isometry matrices, to be determined
+///
+/// 3. fix_lattice = true: Force lattice mapping solutions of the form
+///     S1 * N = V * Q * L2, where
+///     S1 = this->configuration_lattice
+///     L2 = child.lat_column_mat
+///      N = unimodular matrix, generates non-identical but equivalent
+///          parent superlattices, to be determined
+///   V, Q = stretch and isometry matrices, to be determined
+///
+/// 4. fix_lattice_volume_range = true: Force lattice mapping solutions of the
+/// form
+///     S1 * N = V * Q * L2, where
+///     this->min_lattice_volume <=
+///         S1.determinant() <= this->max_lattice_volume,
+///     S1 = lattice equivalent to the configuration lattice, to be determined
+///     L2 = child.lat_column_mat
+///      N = unimodular matrix, generates non-identical but equivalent
+///          parent superlattices, to be determined
+///   V, Q = stretch and isometry matrices, to be determined
+///
+/// 5. auto_lattice_volume_range = true: The most general mapping approach, it
+///   is equivalent `fix_lattice_volume_range` with a volume range that is
+///   determined by constaints on the Va frac and change in volume between the
+///   input structure and mapped structure.
+///
+/// If the mapping is succesful, one or more mapping solutions will be found
+/// and the unmapped input structure will be mapped to the prim, creating a
+/// `mapped_child` structure, `mapped_configuration`, and `mapped_properties`,
+/// where the `mapped_configuration` and `mapped_properties` have the same
+/// lattice and orientation as `mapped_child`.
+///
+/// As a post-processing step, the `mapped_configuration` is transformed to the
+/// `final_configuration` which is (a) always the canonical supercells and (b)
+/// either:
+/// 1. finalize_strict = true: (the 'strict' method) the configuration which
+/// preserves the orientation of the original unmapped structure as much as
+/// possible.
+/// 2. otherwise, the finalized configuration is the canonical equivalent
+/// configuration in the canonical supercell
+///
+struct ConfigMapperSettings {
+  ConfigMapperSettings()
+      : lattice_weight(0.5),
+        cost_tol(TOL),
+        k_best(1),
+        min_lattice_volume(1),
+        max_lattice_volume(1),
+        min_va_frac(0.),
+        max_va_frac(1.),
+        max_volume_change(0.3) {}
 
   int options() const {
     int opt = 0;
@@ -71,85 +104,172 @@ struct Settings {
     return opt;
   }
 
-  void set_default() { *this = Settings(); }
+  // --- Lattice mapping method choices: ---
 
-  /// lattice_weight specifies the cost function in terms of lattice deformation
-  /// cost and atomic deformation cost (i.e., atomic displacement) cost =
-  /// lattice_weight*lattice_cost + (1l-lattice_weight)*atomic_displacement_cost
+  /// Force lattice mapping solutions of the form `L1 * T = Q * L2`, where
+  ///     L1 = the prim lattice
+  ///     L2 = child.lat_column_mat
+  ///      T = an integer transformation matrix, to be determined
+  ///      Q = isometry matrix, constrained to be an elemenet of the prim
+  ///          factor group, to be determined
+  bool fix_ideal = false;
+
+  /// Force lattice mapping solutions of the form `S1 = V * Q * L2`, where
+  ///     S1 = this->configuration_lattice.value()
+  ///     L2 = child.lat_column_mat
+  ///   V, Q = stretch and isometry matrices, to be determined
+  bool fix_lattice_mapping = false;
+
+  /// Force lattice mapping solutions of the form `S1 * N = V * Q * L2`, where
+  ///     S1 = this->configuration_lattice.value()
+  ///     L2 = child.lat_column_mat
+  ///      N = unimodular matrix, generates non-identical but equivalent
+  ///          parent superlattices, to be determined
+  ///   V, Q = stretch and isometry matrices, to be determined
+  bool fix_lattice = false;
+
+  /// Force lattice mapping solutions of the form `S1 * N = V * Q * L2`, where
+  ///     this->min_lattice_volume <=
+  ///         S1.determinant() <= this->max_lattice_volume,
+  ///     S1 = lattice equivalent to the configuration lattice, to be determined
+  ///     L2 = child.lat_column_mat
+  ///      N = unimodular matrix, generates non-identical but equivalent
+  ///          parent superlattices, to be determined
+  ///   V, Q = stretch and isometry matrices, to be determined
+  bool fix_lattice_volume_range = false;
+
+  /// Equivalent to `fix_lattice_volume_range`, with a volume range that is
+  /// determined by constaints on the Va fraction and the change in volume
+  /// between the input structure and mapped structure.
+  bool auto_lattice_volume_range = false;
+
+  // --- Structure mapping parameters: ---
+
+  /// If true, use the symmetry-breaking strain cost.
+  bool use_symmetry_breaking_strain_cost = false;
+
+  /// If true, use the symmetry-breaking displacement cost.
+  bool use_symmetry_breaking_displacement_cost = false;
+
+  /// Specifies the cost function in terms of lattice deformation
+  /// cost and atomic deformation cost:
+  ///     total_cost = lattice_weight*lattice_deformation_cost +
+  ///                  (1-lattice_weight)*atomic_deformation_cost
+  /// Default: 0.5
   double lattice_weight;
 
-  /// True if child structure's lattice should be assumed to be ideal integer
-  /// supercell of parent structure
-  bool ideal;
-
-  /// True invokes post-processing step to find a symmetry operation of the
-  /// parent structure that preserves setting of child structure as much as
-  /// possible after mapping
-  bool strict;
+  /// Tolerance used to determine if two mappings have identical cost
+  /// Default: TOL
+  double cost_tol;
 
   /// True invokes additional checks which determine whether there are any other
   /// mappings that are distinct from the best mapping, but have the same cost
-  bool robust;
-
-  /// If true, search for potential mappings will be constrained to the
-  /// supercell volume of the hint config
-  bool fix_volume;
-
-  /// If true, search for potential mappings will be constrained to the exact
-  /// supercell of the hint config
-  bool fix_lattice;
+  /// Default: false
+  bool robust = false;
 
   /// Specify the number, k, of k-best mappings to include in solution set
-  /// (default is 1)
+  /// Default: 1
   Index k_best;
 
+  /// Lattice used by `fix_lattice` and `fix_lattice_mapping` methods.
+  /// This is required to have a value of one of those methods is chosen. It
+  /// must be a superlattice of the prim lattice. It does not have to be
+  /// canonical.
+  /// Default: empty
+  std::optional<Lattice> configuration_lattice;
+
   /// List of superlattices of parent structure to consider when searching for
-  /// mappings
-  std::vector<Lattice> forced_lattices;
+  /// mappings. If any provided, only these lattices will be considered, and
+  /// only if they fall within the volume range being searched.
+  ///
+  /// Applies to the `fixed_lattice_volume_range` and
+  /// `auto_lattice_volume_range` lattice mapping methods.
+  /// Default: empty
+  std::vector<Lattice> allowed_lattices;
 
   /// If provided, used to filter list of potential supercells of the parent
-  /// structure to search over
+  /// structure to search over.
+  ///
+  /// The filter function is of the form
+  /// `bool filter(parent_prim_lattice, proposed_parent_superlattice)`, where
+  /// `parent_prim_lattice` is the lattice of the primitive parent structure,
+  /// and `proposed_parent_superlattice` is a proposed superlattice of the
+  /// parent structure.
+  ///
+  /// Applies to the `fixed_lattice_volume_range` and
+  /// `auto_lattice_volume_range` lattice mapping methods. The filter is also
+  /// applied to lattices specified by `allowed_lattices`.
+  /// Default: empty
   xtal::StrucMapping::LatticeFilterFunction filter;
 
-  /// Tolerance used to determine if two mappings have identical cost
-  double cost_tol;
+  /// The minimum configuration lattice volume considered.
+  ///
+  /// Applies to the `fixed_lattice_volume_range` lattice mapping method only.
+  /// Default: 1
+  Index min_lattice_volume;
 
-  /// minimum fraction of vacant sites, below this fraction a mapping will not
-  /// be considered
+  /// The maximum configuration lattice volume considered.
+  ///
+  /// Applies to the `fixed_lattice_volume_range` lattice mapping method only.
+  /// Default: 1
+  Index max_lattice_volume;
+
+  /// The minimum fraction of vacant sites. Below this fraction a mapping will
+  /// not be considered.
+  ///
+  /// Applies to the `auto_lattice_volume_range` lattice mapping method only.
+  /// Default: 0.
   double min_va_frac;
 
-  /// maximum fraction of vacant sites, above this fraction a mapping will not
-  /// be considered
+  /// The maximum fraction of vacant sites. Above this fraction a mapping will
+  /// not be considered
+  ///
+  /// Applies to the `auto_lattice_volume_range` lattice mapping method only.
+  /// Default: 1.
   double max_va_frac;
 
-  /// constrains the search space by assuming a limit on allowed volume change
-  /// only taken into account when non-interstitial vacancies are allowed in
-  /// parent structure
-  double max_vol_change;
+  /// Constrains the search space by setting a limit on allowed volume change.
+  ///
+  /// Applies to the `auto_lattice_volume_range` lattice mapping method only.
+  /// Default: 0.3
+  double max_volume_change;
+
+  // TODO: specify a particular translation
+  // std::optional<Eigen::Vector3d> fix_translation;
+
+  // --- Equivalent configuration selection parameters: ---
+
+  /// If true, as a post-processing step, the `mapped_configuration` is
+  /// transformed to a `final_configuration` in the canonical supercell which
+  /// preserves the orientation of the original unmapped structure as much as
+  /// possible. Otherwise, the `final_configuration` is the canonical
+  /// equivalent configuration in the canonical supercell
+  bool finalize_strict = false;
 };
-}  // namespace ConfigMapping
+
+/// Specify degree to which the hinted configuration matches the final mapped
+/// configuration:
+/// - None : unspecified/unknown
+/// - Derivate : same occupation, but other DoFs are different
+/// - Equivalent : same occupation and DoFs, but related to Hint by a SymOp
+///   of the ideal crystal
+/// - Identical : Exact same occupation and DoFs
+/// - NewOcc : Occupation has no relation to Hint (no statement about other
+///   DoFs, but they should be presumed different)
+/// - NewScel : Mapped configuration corresponds to different supercell than
+///   Hint
+enum class ConfigComparison {
+  None,
+  Derivative,
+  Equivalent,
+  Identical,
+  NewOcc,
+  NewScel
+};
 
 /// Data structure holding results of ConfigMapper algorithm
 struct ConfigMapperResult {
-  /// Specify degree to which the hinted configuration matches the final mapped
-  /// configuration:
-  /// - None : unspecified/unknown
-  /// - Derivate : same occupation, but other DoFs are different
-  /// - Equivalent : same occupation and DoFs, but related to Hint by a SymOp
-  ///   of the ideal crystal
-  /// - Identical : Exact same occupation and DoFs
-  /// - NewOcc : Occupation has no relation to Hint (no statement about other
-  ///   DoFs, but they should be presumed different)
-  /// - NewScel : Mapped configuration corresponds to different supercell than
-  ///   Hint
-  enum class HintStatus {
-    None,
-    Derivative,
-    Equivalent,
-    Identical,
-    NewOcc,
-    NewScel
-  };
+  typedef ConfigComparison HintStatus;
 
   /// Data structure storing a structure -> configuration mapping
   ///
@@ -323,13 +443,13 @@ class ConfigMapper {
   ///   _shared_prim->crystallography_tol())
   ///
   ConfigMapper(std::shared_ptr<Structure const> const &_shared_prim,
-               ConfigMapping::Settings const &_settings, double _tol);
+               ConfigMapperSettings const &_settings, double _tol);
 
   std::shared_ptr<Structure const> const &shared_prim() const {
     return m_shared_prim;
   }
 
-  ConfigMapping::Settings const &settings() const { return m_settings; }
+  ConfigMapperSettings const &settings() const { return m_settings; }
 
   xtal::StrucMapper const &struc_mapper() const { return m_struc_mapper; }
 
@@ -364,8 +484,8 @@ class ConfigMapper {
   /// Implements the structure mapping
   xtal::StrucMapper m_struc_mapper;
 
-  /// See ConfigMapping::Settings members for parameter descriptions
-  ConfigMapping::Settings m_settings;
+  /// See ConfigMapperSettings members for parameter descriptions
+  ConfigMapperSettings m_settings;
 };
 
 class PrimStrucMapCalculator : public xtal::SimpleStrucMapCalculator {

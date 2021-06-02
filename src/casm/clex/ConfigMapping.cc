@@ -442,14 +442,13 @@ Index ConfigMapperResult::n_optimal(double tol /*=TOL*/) const {
 }
 
 ConfigMapper::ConfigMapper(std::shared_ptr<Structure const> const &_shared_prim,
-                           ConfigMapping::Settings const &_settings,
-                           double _tol)
+                           ConfigMapperSettings const &_settings, double _tol)
     : m_shared_prim(_shared_prim),
       m_struc_mapper(
           PrimStrucMapCalculator(
               *shared_prim(), adapter::Adapter<xtal::SymOpVector, SymGroup>()(
                                   shared_prim()->factor_group())),
-          _settings.lattice_weight, _settings.max_vol_change,
+          _settings.lattice_weight, _settings.max_volume_change,
           _settings.options(),
           _tol > 0. ? _tol : shared_prim()->lattice().tol(),
           _settings.min_va_frac, _settings.max_va_frac),
@@ -458,7 +457,7 @@ ConfigMapper::ConfigMapper(std::shared_ptr<Structure const> const &_shared_prim,
     m_struc_mapper.set_filter(settings().filter);
   }
 
-  for (Lattice const &lattice : settings().forced_lattices) {
+  for (Lattice const &lattice : settings().allowed_lattices) {
     m_struc_mapper.add_allowed_lattice(lattice);
   }
 }
@@ -501,7 +500,7 @@ ConfigMapperResult ConfigMapper::import_structure(
   std::set<xtal::MappingNode> struc_maps;
 
   // Method 1: hint && 'ideal' option (exactly known lattice mapping)
-  if (hint_ptr && settings().ideal) {
+  if (hint_ptr && settings().fix_lattice_mapping) {
     xtal::LatticeNode lattice_node(
         hint_ptr->prim().lattice(), hint_ptr->ideal_lattice(),
         Lattice(child_struc.lat_column_mat),
@@ -520,7 +519,7 @@ ConfigMapperResult ConfigMapper::import_structure(
                         ". Try setting \"fix_lattice\" : false.";
 
     // Method 3: hint && 'fix_volume' option (exactly known volume)
-  } else if (hint_ptr && settings().fix_volume) {
+  } else if (hint_ptr && settings().fix_lattice_volume_range) {
     Index vol = hint_ptr->supercell().volume();
     struc_maps = struc_mapper().map_deformed_struc_impose_lattice_vols(
         child_struc, vol, vol, k_best, best_cost + struc_mapper().cost_tol());
@@ -530,7 +529,7 @@ ConfigMapperResult ConfigMapper::import_structure(
           ". Try setting \"fix_volume\" : false.";
 
     // Method 4: no hint && 'ideal' option (ideal integer supercell of prim)
-  } else if (settings().ideal) {
+  } else if (settings().fix_ideal) {
     struc_maps = struc_mapper().map_ideal_struc(child_struc, k_best);
     if (struc_maps.empty())
       result.fail_msg =
@@ -586,7 +585,7 @@ ConfigMapperResult ConfigMapper::import_structure(
     SupercellSymInfo canonical_supercell_sym_info =
         shared_canonical_supercell->sym_info();
     PermuteIterator perm_it = canonical_supercell_sym_info.permute_begin();
-    if (settings().strict) {
+    if (settings().finalize_strict) {
       // Strictness transformation reduces permutation swaps, translation
       // magnitude, and isometry character
       perm_it = Local::_strictest_equivalent(

@@ -1296,7 +1296,8 @@ std::set<MappingNode> StrucMapper::map_deformed_struc_impose_lattice_vols(
 }
 
 /// \brief Find the k-best mappings of an arbitrary child structure onto the
-/// parent structure, specifying the parent superlattice exactly
+/// parent structure, specifying the parent superlattice exactly, but not the
+/// way the child lattice maps to the parent superlattice
 ///
 /// Similar to `map_deformed_struc`, but with the following modification:
 /// - Only 1 parent superlattice, `imposed_lat` is considered.

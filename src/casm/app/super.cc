@@ -590,7 +590,7 @@ int super_command(const CommandArgs &args) {
         double tol = TOL;
 
         ConfigMapper configmapper(primclex.shared_prim(),
-                                  ConfigMapping::Settings(), tol);
+                                  ConfigMapperSettings(), tol);
 
         auto map_res =
             configmapper.import_structure(make_simple_structure(super));

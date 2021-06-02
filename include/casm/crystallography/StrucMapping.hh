@@ -656,7 +656,8 @@ class StrucMapper {
       SymOpVector const &child_factor_group = {SymOp::identity()}) const;
 
   /// \brief Find the k-best mappings of an arbitrary child structure onto the
-  /// parent structure, specifying the parent superlattice exactly
+  /// parent structure, specifying the parent superlattice exactly, but not the
+  /// way the child lattice maps to the parent superlattice
   std::set<MappingNode> map_deformed_struc_impose_lattice(
       const SimpleStructure &child_struc, const Lattice &imposed_lat,
       Index k = 1, double max_cost = StrucMapping::big_inf(),

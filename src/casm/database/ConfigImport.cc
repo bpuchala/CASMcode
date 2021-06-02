@@ -26,13 +26,13 @@ namespace DB {
 
 // --- Import<Configuration> ---
 
-ConfigMapping::Settings const &StructureMap<Configuration>::settings() const {
+ConfigMapperSettings const &StructureMap<Configuration>::settings() const {
   return m_configmapper->settings();
 }
 
-/// Construct with PrimClex and ConfigMapping::Settings (see Import / Update
+/// Construct with PrimClex and ConfigMapperSettings (see Import / Update
 /// desc)
-StructureMap<Configuration>::StructureMap(ConfigMapping::Settings const &_set,
+StructureMap<Configuration>::StructureMap(ConfigMapperSettings const &_set,
                                           const PrimClex &primclex,
                                           bool _primitive_only)
     : m_primclex_ptr(&primclex), m_primitive_only(_primitive_only) {
@@ -359,7 +359,7 @@ int Import<Configuration>::run(const PrimClex &primclex,
   DataFormatterDictionary<Supercell> const &supercell_query_dict =
       primclex.settings().query_handler<Supercell>().dict();
 
-  ConfigMapping::Settings map_settings;
+  ConfigMapperSettings map_settings;
   jsonParser mapping_json;
   kwargs.get_else(mapping_json, "mapping", jsonParser());
   from_json(map_settings, mapping_json, shared_prim, supercell_query_dict);
@@ -665,7 +665,7 @@ int Update<Configuration>::run(const PrimClex &primclex,
 
   // 'mapping' subsettings are used to construct ConfigMapper and return 'used'
   // settings values still need to figure out how to specify this in general
-  ConfigMapping::Settings map_settings;
+  ConfigMapperSettings map_settings;
   jsonParser mapping_json;
   kwargs.get_else(mapping_json, "mapping", jsonParser());
   from_json(map_settings, mapping_json, shared_prim, supercell_query_dict);

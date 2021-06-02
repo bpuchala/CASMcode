@@ -16,12 +16,8 @@ class Site;
 class SimpleStructure;
 }  // namespace xtal
 using xtal::SimpleStructure;
-
-namespace ConfigMapping {
-struct Settings;
-}
-
 class ConfigMapper;
+struct ConfigMapperSettings;
 class Configuration;
 class PrimClex;
 class jsonParser;
@@ -35,7 +31,7 @@ template <>
 class StructureMap<Configuration> {
  public:
   /// Construct with PrimClex and settings (see Import / Update desc)
-  StructureMap<Configuration>(ConfigMapping::Settings const &_set,
+  StructureMap<Configuration>(ConfigMapperSettings const &_set,
                               const PrimClex &_primclex, bool _primitive_only);
 
   typedef std::back_insert_iterator<std::vector<ConfigIO::Result> >
@@ -63,7 +59,7 @@ class StructureMap<Configuration> {
                           map_result_inserter result) const;
 
   /// Returns settings used for mapping
-  const ConfigMapping::Settings &settings() const;
+  const ConfigMapperSettings &settings() const;
 
  private:
   /// \brief Read SimpleStructure to be imported

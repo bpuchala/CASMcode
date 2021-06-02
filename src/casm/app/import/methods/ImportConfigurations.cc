@@ -398,7 +398,7 @@ void ImportConfigurations::run(PrimClex &primclex,
 
   // 2) Parse structure mapping settings ----
 
-  ConfigMapping::Settings config_mapper_settings;
+  ConfigMapperSettings config_mapper_settings;
   parser.optional(config_mapper_settings, "mapping", shared_prim,
                   supercell_query_dict);
   report_and_throw_if_invalid(parser, log, error_if_invalid);
