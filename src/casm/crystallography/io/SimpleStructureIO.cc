@@ -192,8 +192,17 @@ static void _properties_from_json(
 static void _from_json_current(xtal::SimpleStructure &simple_structure,
                                const jsonParser &json) {
   COORD_TYPE coordinate_mode = json["coord_mode"].get<COORD_TYPE>();
-  simple_structure.lat_column_mat =
-      json["lattice"].get<Eigen::Matrix3d>().transpose();
+
+  if (json.contains("lattice_vectors")) {
+    simple_structure.lat_column_mat =
+        json["lattice_vectors"].get<Eigen::Matrix3d>().transpose();
+  } else if (json.contains("lattice")) {  // deprecated
+    simple_structure.lat_column_mat =
+        json["lattice"].get<Eigen::Matrix3d>().transpose();
+  } else {
+    throw std::runtime_error(
+        "Error reading xtal::SimpleStructure: \"lattice_vectors\" not found.");
+  }
 
   // Input coordinate mode to cartesian coordinate transformation matrix:
   //   cart_coord = to_cartesian_matrix * input_mode_coord
@@ -278,7 +287,7 @@ namespace CASM {
 ///     <molecule type name>,
 ///     ...
 ///   ],
-///   "lattice": [
+///   "lattice_vectors": [
 ///      [<first lattice vector>],
 ///      [<second lattice vector>],
 ///      [<third lattice vector>]
@@ -335,7 +344,7 @@ jsonParser &to_json(xtal::SimpleStructure const &simple_structure,
     json["coord_mode"] = "Cartesian";
   }
 
-  json["lattice"] = simple_structure.lat_column_mat.transpose();
+  json["lattice_vectors"] = simple_structure.lat_column_mat.transpose();
 
   // Output global properties
   for (auto const &dof : simple_structure.properties) {
