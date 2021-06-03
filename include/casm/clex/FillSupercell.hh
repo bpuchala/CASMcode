@@ -125,6 +125,11 @@ class FillSupercell {
   /// Returns the SymOp used by `operator()`
   const SymOp &symop() const { return *m_symop_ptr; }
 
+  /// Returns the permutation used by `operator()`, which encodes the site
+  /// mapping. The value `permutation[i]` is the site index in `motif` that is
+  /// mapped to site i in the resulting configuration.
+  const std::vector<Index> &permutation() const { return m_permutation; }
+
  private:
   void _init(Supercell const &_motif_scel) const;
 
@@ -136,6 +141,7 @@ class FillSupercell {
   // called repeatedly on motif Configuration from the same Supercell.
 
   mutable SymOp const *m_symop_ptr;
+  mutable std::vector<Index> m_permutation;
   mutable Supercell const *m_motif_supercell;
   mutable std::vector<std::vector<Index> > m_index_table;
 };

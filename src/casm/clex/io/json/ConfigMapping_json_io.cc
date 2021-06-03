@@ -191,7 +191,6 @@ namespace CASM {
 void parse(InputParser<ConfigMapperSettings> &parser,
            std::shared_ptr<Structure const> const &shared_prim,
            DataFormatterDictionary<Supercell> const &supercell_query_dict) {
-
   ConfigMapperSettings settings;
 
   // parse lattice mapping method:
@@ -273,7 +272,6 @@ void parse(InputParser<ConfigMapperSettings> &parser,
     parser.optional(filter_expression, "filter");
 
     try {
-
       DataFormatter<Supercell> formatter =
           supercell_query_dict.parse(filter_expression);
       auto filter = [formatter, shared_prim](Lattice const &parent,
@@ -283,10 +281,10 @@ void parse(InputParser<ConfigMapperSettings> &parser,
         return check_stream.value();
       };
       settings.filter = filter;
-    }
-    catch (std::exception &e) {
+    } catch (std::exception &e) {
       std::stringstream msg;
-      msg << "Error: could not construct filter from expression: '" << filter_expression << "'.";
+      msg << "Error: could not construct filter from expression: '"
+          << filter_expression << "'.";
       parser.insert_error("filter", msg.str());
     }
   }
@@ -301,7 +299,7 @@ ENUM_TRAITS(ConfigMapperResult::HintStatus)
 
 namespace {
 
-jsonParser &to_json(xtal::SymOp const &op, jsonParser &json) {
+jsonParser &to_json(SymOp const &op, jsonParser &json) {
   to_json(get_matrix(op), json["matrix"]);
   to_json_array(get_translation(op), json["translation"]);
   to_json(get_time_reversal(op), json["time_reversal"]);
@@ -314,12 +312,21 @@ jsonParser &to_json(ConfigMapperResult::ConfigurationMapping const &mapping,
   to_json(mapping.mapped_child, json["mapped_child"], {}, coordinate_mode);
   json["mapped_configuration"] = mapping.mapped_configuration;
   json["mapped_properties"] = mapping.mapped_properties;
+
+  to_json(mapping.symop_to_canon_scel, json["symop_to_canon_scel"]);
+  to_json(mapping.permutation_to_canon_scel.perm_array(),
+          json["permutation_to_canon_scel"]);
+  json["transformation_matrix_to_canon_scel"] =
+      mapping.transformation_matrix_to_canon_scel;
+  json["configuration_in_canon_scel"] = mapping.configuration_in_canon_scel;
+  json["properties_in_canon_scel"] = mapping.properties_in_canon_scel;
+
   to_json(mapping.symop_to_final, json["symop_to_final"]);
-  json["transformation_matrix_to_final"] =
-      mapping.transformation_matrix_to_final;
+  to_json(mapping.permutation_to_final.perm_array(),
+          json["permutation_to_final"]);
   json["final_configuration"] = mapping.final_configuration;
   json["final_properties"] = mapping.final_properties;
-  // TODO: output the rest of the data
+
   if (mapping.hint_status != ConfigMapperResult::HintStatus::None) {
     json["hint_status"] = to_string(mapping.hint_status);
     json["hint_cost"] = mapping.hint_cost;

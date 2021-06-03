@@ -11,11 +11,23 @@ class SimpleStructure;
 }  // namespace xtal
 
 struct MappedProperties;
+class Permutation;
 class PermuteIterator;
+class SymOp;
 
-///
+namespace sym {
+
+/// \brief Apply symmetry to MappedProperties, using permutation for mapping
+/// site properties
+MappedProperties copy_apply(SymOp const &symop, Permutation const &permutation,
+                            MappedProperties const &props);
+
+/// \brief Apply symmetry to MappedProperties, using combined permutation for
+/// mapping site properties
 MappedProperties copy_apply(PermuteIterator const &op,
                             MappedProperties const &props);
+
+}  // namespace sym
 
 /// Construct MappedProperties from a mapped SimpleStructure
 MappedProperties make_mapped_properties(

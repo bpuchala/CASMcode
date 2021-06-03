@@ -141,6 +141,8 @@ Configuration FillSupercell::operator()(SymOp const &symop,
   ConfigDoF trans_motif(motif.configdof());
   trans_motif.apply_sym_no_permute(symop);
 
+  m_permutation.resize(result->size());
+
   // copy transformed dof, as many times as necessary to fill the supercell
   for (auto const &dof : trans_motif.global_dofs())
     result->configdof().set_global_dof(dof.first, dof.second.values());
@@ -148,6 +150,7 @@ Configuration FillSupercell::operator()(SymOp const &symop,
   for (Index s = 0; s < m_index_table.size(); ++s) {
     for (Index i = 0; i < m_index_table[s].size(); ++i) {
       Index scel_s = m_index_table[s][i];
+      m_permutation[scel_s] = s;
 
       if (trans_motif.has_occupation()) {
         result->configdof().occ(scel_s) = trans_motif.occ(s);

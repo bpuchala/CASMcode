@@ -86,17 +86,56 @@
 ///     v_global_mapped = matrix * v_global_unmapped,
 ///     matrix = AnisoValTraits(property_type).symop_to_matrix(
 ///                  Q^{N}, (V^{N}).inverse() * trans, time_reversal)
+///     using trans, Q^{N}, and V^{N} as defined in `StrucMapper`.
 ///
 /// For site properties this means:
 ///     v_site_mapped[i] = matrix * v_global_unmapped[perm[i]]
 ///     matrix = AnisoValTraits(property_type).symop_to_matrix(
 ///                  Q^{N}, (V^{N}).inverse() * trans, time_reversal)
+///     using perm, trans, Q^{N}, and V^{N} as defined in `StrucMapper`.
 ///
 ///
 /// --- Constructing the mapped configuration and mapped properties: ---
 ///
 /// Given the mapped, molecule-ized, child structure, `mapped_child`, the
-/// `mapped_configuration` are `mapped_properties` are constructed.
+/// `mapped_configuration` are `mapped_properties` are constructed by
+/// directly mapping into the supercell with lattice vectors equal to those of
+/// the parent superlattice that `mapped_child` is mapped to, L1 * T1 * N. This
+/// supercell may not be the canonical supercell.
+///
+///
+/// --- Mapping to the canonical supercell: ---
+///
+/// The configuration in the canonical supercell, `configuration_in_canon_scel`,
+/// is constructed by finding the canonical equivalent supercell and the first
+/// prim factor group operation, `symop_to_canon_scel` and transformation
+/// matrix, `transformation_matrix_to_canon_scel`, that transforms the
+/// `mapped_configuration` supercell to the canonical supercell lattice:
+///        S1_canon = g_canon.matrix * (L1 * T1 * N) * T1_canon, where
+///        S1_canon = canonical equivalent supercell for the mapped
+///                   configuration
+///     L1 * T1 * N = lattice_node.parent.superlattice().lat_column_mat(),
+///                   the prim superlattice the input structure is mapped to,
+///                   as defined in `StrucMapper`
+///         g_canon = symop_to_canon_scel, a prim factor group operation
+///        T1_canon = `transformation_matrix_to_canon_scel`, the integer
+///                   transformation matrix from g_canon.matrix * (L1 * T1 *
+///                   N) to S1_canon
+///
+/// Global properties and DoF are transformed according to:
+///     v_global_in_canon_scel = matrix * v_global_mapped,
+///     matrix = AnisoValTraits(dofname).symop_to_matrix(g_canon.matrix,
+///                  g_canon.tau, g_canon.time_reversal)
+///
+/// By mapping site coordinates, the permutation, `permutation_to_canon_scel`
+/// which maps sites to the canonical supercell can also be found. Then site
+/// properties and DoF are transformed according to:
+///     v_site_in_canon_scel[i] = matrix * v_site_unmapped[perm_canon[i]],
+///     matrix = AnisoValTraits(dofname).symop_to_matrix(g_canon.matrix,
+///                  g_canon.tau, g_canon.time_reversal),
+///     perm_canon = permutation_to_canon_scel, The permutation that maps sites
+///                  in `mapped_configuration` to sites in
+///                  `configuration_in_canon_scel`.
 ///
 ///
 /// --- Selection of an equivalent configuration: ---
@@ -107,23 +146,26 @@
 /// method) the configuration which preserves the orientation of the original
 /// unmapped structure as much as possible.
 ///
-/// The relationship between the `mapped_configuration` and the
+/// The relationship between the `configuration_in_canon_scel` to the
 /// `final_configuration` is stored in the mapping results by `symop_to_final`
-/// and `transformation_matrix_to_final` via:
-/// - final_configuration.ideal_lattice() = (matrix_to_final *
-/// mapped_configuration.ideal_lattice()) * transformation_matrix_to_final
-/// - final_configuration.global_dofs(dofname) = matrix *
-/// mapped_configuration.global_dofs(dofname)
-/// - final_configuration.local_dofs(dofname)[i] = matrix *
-/// mapped_configuration.local_dofs(dofname)[permutation_to_final[i]],
+/// and `permutation_to_final` which transform properties and DoF as in the
+/// previous step.
 ///
-/// where matrix =
-/// AnisoValTraits(dofname).symop_to_matrix(symop_to_final.matrix,
-/// symop_to_final.tau, symop_to_final.time_reversal)
+/// Global properties and DoF are transformed according to:
+///     v_global_final = matrix * v_global_in_canon_scel,
+///     matrix = AnisoValTraits(dofname).symop_to_matrix(g_final.matrix,
+///                  g_final.tau, g_final.time_reversal)
+///     g_final = symop_to_final, a prim factor group operation
 ///
-/// A similar transformation is used to construct `final_properties` from
-/// `mapped_properties`. The relationship between mapped and final properties is
-/// the same as the relationship between mapped and final DoF.
+/// By mapping site coordinates, the permutation, `permutation_to_canon_scel`
+/// which maps sites to the canonical supercell can also be found. Then site
+/// properties and DoF are transformed according to:
+///     v_site_final[i] = matrix * v_site_in_canon_scel[perm_final[i]],
+///     matrix = AnisoValTraits(dofname).symop_to_matrix(g_final.matrix,
+///                  g_final.tau, g_final.time_reversal),
+///     perm_final = permutation_to_final, The permutation that maps sites
+///                  in `configuration_in_canon_scel` to sites in
+///                  `final_configuration`.
 ///
 
 namespace CASM {
@@ -558,12 +600,20 @@ ConfigMapperResult ConfigMapper::import_structure(
     //     mapping_node.atomic_node.cost;
     // mapped_structure.properties["total_cost"] = mapping_node.cost;
 
+    // xtal::SimpleStructure mapped_child =
+    //     make_mapped_structure(mapping_node, unmapped_child, shared_prim());
     xtal::SimpleStructure mapped_child =
-        make_mapped_structure(mapping_node, unmapped_child, shared_prim());
+        struc_mapper().calculator().resolve_setting(mapping_node,
+                                                    unmapped_child);
+    std::cout << "mapped_child.lat_column_mat: \n"
+              << mapped_child.lat_column_mat << std::endl;
+    // TODO: ^ use standalone make_mapped_structure
     Configuration mapped_configuration =
         make_mapped_configuration(mapped_child, shared_prim());
     MappedProperties mapped_properties =
         make_mapped_properties(mapped_child, *shared_prim());
+    std::cout << "mapped_properties.global[\"latvec\"]: \n"
+              << mapped_properties.global.find("latvec")->second << std::endl;
 
     // 2) construct final_configuration, final_properties ---
 
@@ -573,11 +623,21 @@ ConfigMapperResult ConfigMapper::import_structure(
         shared_prim()->lattice().tol());
     std::shared_ptr<Supercell> shared_canonical_supercell =
         std::make_shared<Supercell>(shared_prim(), canonical_superlattice);
-    Configuration mapped_configuration_in_canonical_supercell =
-        fill_supercell(mapped_configuration, shared_canonical_supercell);
-    MappedProperties mapped_properties_in_canonical_supercell =
-        mapped_properties;
-    // TODO: ^ transform properties also, and record symop to canonical
+
+    FillSupercell f{shared_canonical_supercell};
+    Configuration configuration_in_canon_scel = f(mapped_configuration);
+    SymOp symop_to_canon_scel{f.symop()};
+    Permutation perm_to_canon_scel{f.permutation()};
+    MappedProperties properties_in_canon_scel{sym::copy_apply(
+        symop_to_canon_scel, perm_to_canon_scel, mapped_properties)};
+
+    // L_canon_scel = (g * L_mapped) * T
+    Eigen::Matrix3d g = symop_to_canon_scel.matrix();
+    Eigen::Matrix3d L_canon_scel = canonical_superlattice.lat_column_mat();
+    Eigen::Matrix3d L_mapped =
+        mapped_configuration.ideal_lattice().lat_column_mat();
+    Eigen::Matrix3l transformation_matrix_to_canon_scel =
+        lround((g * L_mapped).inverse() * L_canon_scel);
 
     // 2b: find the symop to either (i) the 'strict' configuration most similar
     // to the unmapped child, or (ii) the canonical configuration
@@ -591,38 +651,31 @@ ConfigMapperResult ConfigMapper::import_structure(
           canonical_supercell_sym_info.permute_begin(),
           canonical_supercell_sym_info.permute_end(), mapping_node);
     } else {
-      perm_it = mapped_configuration_in_canonical_supercell.to_canonical();
+      perm_it = configuration_in_canon_scel.to_canonical();
     }
+    SymOp symop_to_final = perm_it.sym_op();
+    Permutation perm_to_final = perm_it.combined_permute();
 
-    // 2c: record the symop_to_final and transformation_matrix_to_final
-    xtal::SymOp symop_to_final =
-        adapter::Adapter<xtal::SymOp, SymOp>()(perm_it.sym_op());
-
-    // L_final = matrix * L_mapped * T
-    Eigen::Matrix3d M = symop_to_final.matrix;
-    Eigen::Matrix3d L_final = canonical_superlattice.lat_column_mat();
-    Eigen::Matrix3d L_mapped =
-        mapped_configuration.ideal_lattice().lat_column_mat();
-    Eigen::Matrix3l transformation_matrix_to_final =
-        lround((M * L_mapped).inverse() * L_final);
-
-    // 2d: construct the `final_configuration`
-    Configuration final_configuration =
-        mapped_configuration_in_canonical_supercell;
+    // 2c: construct the `final_configuration`
+    Configuration final_configuration = configuration_in_canon_scel;
     final_configuration.apply_sym(perm_it);
 
-    // 2e: construct the `final_properties`
+    // 2d: construct the `final_properties`
     MappedProperties final_properties =
-        copy_apply(perm_it, mapped_properties_in_canonical_supercell);
+        sym::copy_apply(perm_it, properties_in_canon_scel);
+    std::cout << "final_properties.global[\"latvec\"]: \n"
+              << final_properties.global.find("latvec")->second << std::endl;
 
     // 2e: check relationship between final_configuration and hint
     HintStatus hint_status = _make_hint_status(hint_ptr, final_configuration);
 
     // 3) save solution (a ConfigMapperResult::ConfigurationMapping)
-    result.maps.emplace(unmapped_child, mapping_node, mapped_child,
-                        mapped_configuration, mapped_properties, symop_to_final,
-                        transformation_matrix_to_final, final_configuration,
-                        final_properties, hint_status, hint_cost);
+    result.maps.emplace(
+        unmapped_child, mapping_node, mapped_child, mapped_configuration,
+        mapped_properties, symop_to_canon_scel, perm_to_canon_scel,
+        transformation_matrix_to_canon_scel, configuration_in_canon_scel,
+        properties_in_canon_scel, symop_to_final, perm_to_final,
+        final_configuration, final_properties, hint_status, hint_cost);
   }
 
   return result;

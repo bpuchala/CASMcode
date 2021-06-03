@@ -106,10 +106,10 @@ struct ConfigMapperSettings {
 
   // --- Lattice mapping method choices: ---
 
-  /// Force lattice mapping solutions of the form `L1 * T = Q * L2`, where
+  /// Force lattice mapping solutions of the form `L1 * T1 = Q * L2`, where
   ///     L1 = the prim lattice
   ///     L2 = child.lat_column_mat
-  ///      T = an integer transformation matrix, to be determined
+  ///     T1 = an integer transformation matrix, to be determined
   ///      Q = isometry matrix, constrained to be an elemenet of the prim
   ///          factor group, to be determined
   bool fix_ideal = false;
@@ -275,23 +275,34 @@ struct ConfigMapperResult {
   ///
   /// See member comments for definitions
   struct ConfigurationMapping {
-    ConfigurationMapping(xtal::SimpleStructure const &_unmapped_child,
-                         xtal::MappingNode const &_mapping,
-                         xtal::SimpleStructure const &_mapped_child,
-                         Configuration const &_mapped_configuration,
-                         MappedProperties const &_mapped_properties,
-                         xtal::SymOp const &_symop_to_final,
-                         Eigen::Matrix3l const &_transformation_matrix_to_final,
-                         Configuration const &_final_configuration,
-                         MappedProperties const &_final_properties,
-                         HintStatus _hint_status, double _hint_cost)
+    ConfigurationMapping(
+        xtal::SimpleStructure const &_unmapped_child,
+        xtal::MappingNode const &_mapping,
+        xtal::SimpleStructure const &_mapped_child,
+        Configuration const &_mapped_configuration,
+        MappedProperties const &_mapped_properties,
+        SymOp const &_symop_to_canon_scel,
+        Permutation const &_permutation_to_canon_scel,
+        Eigen::Matrix3l const &_transformation_matrix_to_canon_scel,
+        Configuration const &_configuration_in_canon_scel,
+        MappedProperties const &_properties_in_canon_scel,
+        SymOp const &_symop_to_final, Permutation const &_permutation_to_final,
+        Configuration const &_final_configuration,
+        MappedProperties const &_final_properties, HintStatus _hint_status,
+        double _hint_cost)
         : unmapped_child(_unmapped_child),
           mapping(_mapping),
           mapped_child(_mapped_child),
           mapped_configuration(_mapped_configuration),
           mapped_properties(_mapped_properties),
+          symop_to_canon_scel(_symop_to_canon_scel),
+          permutation_to_canon_scel(_permutation_to_canon_scel),
+          transformation_matrix_to_canon_scel(
+              _transformation_matrix_to_canon_scel),
+          configuration_in_canon_scel(_configuration_in_canon_scel),
+          properties_in_canon_scel(_properties_in_canon_scel),
           symop_to_final(_symop_to_final),
-          transformation_matrix_to_final(_transformation_matrix_to_final),
+          permutation_to_final(_permutation_to_final),
           final_configuration(_final_configuration),
           final_properties(_final_properties),
           hint_status(_hint_status),
@@ -358,6 +369,35 @@ struct ConfigMapperResult {
     ///
     MappedProperties mapped_properties;
 
+    /// Transformation from mapped configuration supercell to canonical
+    /// supercell. An element of the prim factor group.
+    SymOp symop_to_canon_scel;
+
+    /// Permutation that describes site mapping when mapping the mapped
+    /// configuration into the canonical supercell.
+    ///
+    /// Transformed site properties are mapped using:
+    ///     result.site[property_name].col(i) =
+    ///         (transformed) input.site[property_name].col(permutation[i]).
+    ///
+    Permutation permutation_to_canon_scel;
+
+    /// The transformation from mapped to final supercell lattice vectors is
+    /// made according to:
+    ///
+    ///     configuration_in_canon_scel.ideal_lattice().lat_column_mat() =
+    ///         symop_to_canon_scel.matrix() *
+    ///         mapped_configuration.ideal_lattice().lat_column_mat() *
+    ///         transformation_matrix_to_canon_scel
+    ///
+    Eigen::Matrix3l transformation_matrix_to_canon_scel;
+
+    /// Configuration after mapping to the canonical supercell
+    Configuration configuration_in_canon_scel;
+
+    /// Properties after mapping to the canonical supercell;
+    MappedProperties properties_in_canon_scel;
+
     /// The transformation from mapped configuration DoF and properties to
     /// final configuration DoF and properties is made according to:
     ///
@@ -376,17 +416,16 @@ struct ConfigMapperResult {
     ///               symop_to_final.translation
     ///     TODO: update relationship to show coordinate->index conversions
     ///
-    xtal::SymOp symop_to_final;
+    SymOp symop_to_final;
 
-    /// The transformation from mapped to final supercell lattice vectors is
-    /// made according to:
+    /// Permutation that describes site mapping from
+    /// `configuration_in_canon_scel` to `final_configuration`.
     ///
-    ///     final_configuration.ideal_lattice().lat_column_mat() =
-    ///         symop_to_final.matrix *
-    ///         final_configuration.ideal_lattice().lat_column_mat() *
-    ///         transformation_matrix_to_final
+    /// Transformed site properties are mapped using:
+    ///     result.site[property_name].col(i) =
+    ///         (transformed) input.site[property_name].col(permutation[i]).
     ///
-    Eigen::Matrix3l transformation_matrix_to_final;
+    Permutation permutation_to_final;
 
     /// Final configuration, symmetrically equivalent to `mapped_configuration`,
     /// but possibly with a different choice of supercell and permutation.

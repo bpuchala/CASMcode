@@ -8,10 +8,21 @@
 #include "casm/symmetry/PermuteIterator.hh"
 
 namespace CASM {
-MappedProperties copy_apply(PermuteIterator const &op,
-                            MappedProperties const &props) {
-  SymOp symop = op.sym_op();
 
+namespace sym {
+
+/// \brief Apply symmetry to MappedProperties, using permutation for mapping
+/// site properties
+///
+/// \param symop Symmetry operation used to transform site and global properties
+/// \param permutation Permutation used for mapping site properties.
+///
+/// Transformed site properties are mapped using:
+///     result.site[property_name].col(i) =
+///         (transformed) input.site[property_name].col(permutation[i]).
+///
+MappedProperties copy_apply(SymOp const &symop, Permutation const &permutation,
+                            MappedProperties const &props) {
   MappedProperties result;
   for (auto it = props.global.begin(); it != props.global.end(); ++it) {
     AnisoValTraits traits(AnisoValTraits::name_suffix(it->first));
@@ -20,7 +31,6 @@ MappedProperties copy_apply(PermuteIterator const &op,
     result.global[it->first] = matrix * it->second;
   }
 
-  Permutation tperm(op.combined_permute());
   for (auto it = props.site.begin(); it != props.site.end(); ++it) {
     AnisoValTraits traits(AnisoValTraits::name_suffix(it->first));
     Eigen::MatrixXd new_matrix =
@@ -33,11 +43,20 @@ MappedProperties copy_apply(PermuteIterator const &op,
                        Eigen::MatrixXd(new_matrix.rows(), new_matrix.cols())))
                    .first;
     for (Index i = 0; i < (it->second).cols(); i++) {
-      (it2->second).col(i) = new_matrix.col(tperm[i]);
+      (it2->second).col(i) = new_matrix.col(permutation[i]);
     }
   }
   return result;
 }
+
+/// \brief Apply symmetry to MappedProperties, using combined permutation for
+/// mapping site properties
+MappedProperties copy_apply(PermuteIterator const &op,
+                            MappedProperties const &props) {
+  return copy_apply(op.sym_op(), op.combined_permute(), props);
+}
+
+}  // namespace sym
 
 namespace {
 

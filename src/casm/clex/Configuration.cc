@@ -435,7 +435,7 @@ Configuration &Configuration::apply_sym(const PermuteIterator &op) {
   configdof().apply_sym(op);
   for (auto it = all_props.begin(); it != all_props.end(); ++it) {
     std::string calctype = it->first;
-    set_calc_properties(copy_apply(op, it->second), calctype);
+    set_calc_properties(sym::copy_apply(op, it->second), calctype);
   }
   return *this;
 }
