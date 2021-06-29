@@ -41,12 +41,16 @@ namespace CASM {
 ///   naming conventions as documented for AnisoValTraits. This map also holds
 ///   any scalar properties such as energy or mapping cost
 ///   ("lattice_deformation_cost", "atomic_deformation_cost", "total_cost"),
-///   which can be queried and set using member functions.
+///   which can be queried and set using member functions. Properties are
+///   expected to be vectors expressed in the \link DoFSet "standard
+///   basis"\endlink.
 /// - "site" (std::map<std::string, Eigen::MatrixXd>), a map of property name to
 /// value for
 ///   properties of particular sites such as displacements, forces, or atomic
 ///   coordinates. Property names must follow CASM property naming conventions
-///   as documented for AnisoValTraits.
+///   as documented for AnisoValTraits. Site properties are expected to be
+///   vectors (columns of the matrices) expressed in the \link DoFSet "standard
+///   basis"\endlink.
 ///
 /// MappedProperties also has:
 /// - "origin" (std::string), indicates the source of the properties. This can
@@ -77,12 +81,18 @@ struct MappedProperties {
 
   /// Map of global property name to property value.
   /// Property names must follow CASM property naming conventions as documented
-  /// for AnisoValTraits
+  /// for AnisoValTraits.
+  ///
+  /// Properties are expected to be vectors expressed in the \link xtal::DoFSet
+  /// "standard basis"\endlink.
   std::map<std::string, Eigen::MatrixXd> global;
 
   /// Map of site property name to property value.
   /// Property names must follow CASM property naming conventions as documented
-  /// for AnisoValTraits
+  /// for AnisoValTraits.
+  ///
+  /// Properties are expected to be vectors (columns of the matrices) expressed
+  /// in the \link xtal::DoFSet "standard basis"\endlink.
   std::map<std::string, Eigen::MatrixXd> site;
 
   bool has_scalar(std::string const &_name) const;

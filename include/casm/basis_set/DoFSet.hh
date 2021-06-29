@@ -119,33 +119,33 @@ struct DoFSetInfo {
 
 /// DoFSet: A set of degrees of freedom (DoF)
 ///
+/// \note This is CASM::DoFSet, used to construct basis functions. It is
+/// similar to, but distinct from, CASM::xtal::DoFSet which is used to define
+/// DoF for xtal::BasicStructure. Typical users will only use
+/// CASM::xtal::DoFSet and CASM::xtal::SiteDoFSet directly.
+///
 /// DoFSet specifies all identifying information for a vector of continuous
 /// independent variables (may be site or global variables). For example, a
 /// DoFSet may be used to represent allowed displacements on one site, or
 /// allowed lattice strains.
 ///
 /// A DoFSet has:
-///     - AnisoValTraits, which provides the DoF type name, a standard
-///     coordinate system (the
-///       "standard basis"), and specifies how values transform under
-///       application of symmetry.
+///     - AnisoValTraits, which provides the DoF type name, defines a standard
+///     coordinate system (the "standard basis"), and specifies how values
+///     transform under application of symmetry.
 ///     - a "DoF basis", a set of named basis vectors which are denoted relative
-///     to the standard
-///       basis, allowing the user to specify the DoFSet components, name them,
-///       and restrict DoF values to a particular subspace
+///     to the standard basis, allowing the user to specify the DoFSet
+///     components, name them, and restrict DoF values to a particular subspace
 ///         - The basis is stored as a matrix and components of the basis are
-///         also represented as
-///           a `std::vector<ContinuousDoF>`. The `ContinuousDoF` are used for
-///           constructing basis functions.
+///         also represented as a `std::vector<ContinuousDoF>`. The
+///         `ContinuousDoF` are used for constructing basis functions.
 ///     - the SymGroupRepID of the DoFSet, which is a key for retrieving the
-///     SymGroupRep that
-///       encodes how the DoFSet transforms with symmetry from the prim
-///       Structure factor group
+///     SymGroupRep that encodes how the DoFSet transforms with symmetry from
+///     the prim Structure factor group
 ///     - a list of site occupants for which the DoF does not apply
-///     ("excluded_occupants",
-///       std::unordered_set<std::string>). As an example, this could be used if
-///       some allowed site occupant molecules have magnetic spin, but other
-///       allowed occupants do not.
+///     ("excluded_occupants", std::unordered_set<std::string>). As an example,
+///     this could be used if some allowed site occupant molecules have
+///     magnetic spin, but other allowed occupants do not.
 ///
 /// Examples of standard basis specified by AnisoValTraits:
 /// - "disp" -> (dx, dy, dz) -> displacement components relative to fixed

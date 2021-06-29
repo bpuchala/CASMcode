@@ -175,7 +175,7 @@ SimpleStructure SimpleStrucMapCalculator::resolve_setting(
   /// mol_map[i] lists atom indices of parent superstructure that comprise the
   /// molecule at its i'th molecular site
 
-  // r1[i] + disp[i] = V^{N} * Q^{N} * r2[perm[i]] + trans
+  // parent.coord[i] + disp[i] = V^{N} * Q^{N} * child.coord[perm[i]] + trans
 
   // result.mol_info.coord(i) = U * (r1[i] + disp[i])
   //                          = Q * r2[perm[i]] + U * trans
@@ -258,13 +258,16 @@ SimpleStructure SimpleStrucMapCalculator::resolve_setting(
     result.properties[ttraits.name()] = Uvec;
   }
 
-  // Add new global property -- isometry
-  {
-    AnisoValTraits ttraits("isometry");
-    // unroll to 9-element vector, column-major order
-    result.properties[ttraits.name()] = Eigen::Map<const Eigen::VectorXd>(
-        _node.lattice_node.isometry.data(), ttraits.dim());
-  }
+  // TODO: check this... BP: I don't think this is properly a property of the
+  // resolved structure, which is resolved to remove isometry and translation
+
+  // // Add new global property -- isometry
+  // {
+  //   AnisoValTraits ttraits("isometry");
+  //   // unroll to 9-element vector, column-major order
+  //   result.properties[ttraits.name()] = Eigen::Map<const Eigen::VectorXd>(
+  //       _node.lattice_node.isometry.data(), ttraits.dim());
+  // }
 
   return result;
 }

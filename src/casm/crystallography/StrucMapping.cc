@@ -255,7 +255,7 @@ void check_equal(Eigen::MatrixXd const &A, Eigen::MatrixXd const &B,
 }  // namespace
 
 /// \class LatticeNode
-/// \brief Class describing the lattice-mapping portion of a particular mapping
+/// \brief Data structure describing a lattice mapping relationship
 ///
 /// A general map for child structure onto a parent structure may require
 /// forming a supercell of the parent structure (most commonly) and/or of the
@@ -264,88 +264,126 @@ void check_equal(Eigen::MatrixXd const &A, Eigen::MatrixXd const &B,
 /// rotation information sufficient to fully define the lattice mapping
 /// transformation.
 ///
-/// Encodes the lattice mapping relationship:
+/// ### LatticeNode definitions
 ///
-///     L1 * T1 * N = V^{N} * Q^{N} * L2 * T2
+/// LatticeNode encodes the general lattice mapping relationship:
 ///
-/// L1: Parent lattice (lattice of reference structure)
-/// T1: Integer transformation matrix to parent superlattice
-///  N: Unimodular matrix (integer matrix, with determinant 1) transforms
-///     parent superlattice vectors to create an equivalent superlattice
-/// L2: Child lattice (lattice of structure to be mapped)
-/// T2: Integer transformation matrix to child superlattice (L2 * T2). When the
-///     parent lattice is the lattice of the primitive structure, then T2 = I.
-/// V^{N}: Stretch, a symmetric matrix that describes the deformation that
-///     maps a de-rotated child superlattice to a parent superlattice.
-/// Q^{N}: Isometry matrix, describes rigid transformation that de-rotates
-///     (de-reflects, etc.) a superlattice of child. A property of Q^{N} is
-///     that (Q^{N}).inverse() == (Q^{N}).transpose().
+/// \f[
+///     L_1 * T_1 * N = V^{N} * Q^{N} * L_2 * T_2
+/// \f]
 ///
-/// Spelling it all out:
-/// - L1: unmapped child lattice
-/// - L1 * T1: a parent superlattice
-/// - L1 * T1 * N: lattice vectors for an equivalent lattice to a parent
-///   superlattice
-/// - L2 * T2: a child superlattice. When the parent lattice is the lattice of
-///   the primitive structure, then T2 = I.
-/// - Q^{N} * (L2 * T2): a de-rotated child superlattice
-/// - V^{N} * Q^{N} * L2 * T2: a de-rotated and undeformed child superlattice
-/// - F^{N} = V^{N} * Q^{N}: the deformation gradient for the transformation
-///   of a superlattice of the child lattice to a superlattice of the parent
-///   lattice (F^{N} = F_child_to_parent). Note that the strain associated
-///   with a configuration, whether as a DoF or in MappedProperties is
-///   defined in the reverse sense, as a transformation of parent (supercell
-///   of prim) to child:
-///       F_parent_to_child * L1 * T1 * N = L2 * T2, where
-///       F_parent_to_child = F_child_to_parent.inverse()
-///   For example, `Ustrain` is defined: F_parent_to_child = R * U.
+/// - \f$L_1\f$: The parent (reference structure) lattice vectors, as a column
+///   vector matrix. It is equal to
+///
+///       parent.prim_lattice().lat_column_mat()
+///
+/// - \f$T_1\f$: An integer transformation matrix to a parent superlattice.
+/// - \f$N\f$: A unimodular matrix (integer matrix, with determinant 1)
+///   transforms parent superlattice vectors to create an equivalent
+///   superlattice. Elsewhere, the superscript \f$N\f$ is used to indicate
+///   values that depend on the choice of N.
+/// - \f$L_2\f$: The child lattice (lattice of structure to be mapped), as a
+///   column vector matrix.
+/// - \f$T_2\f$: An integer transformation matrix to a child superlattice,
+///   \f$(L_2 * T_2)\f$. When the parent lattice is the lattice of the
+///   primitive structure, then it will be the case that \f$T_2 = I\f$.
+/// - \f$V^{N}\f$: The stretch matrix, a symmetric matrix that describes the
+///   deformation that maps a de-rotated child superlattice to a parent
+///   superlattice. It is equal to:
+///
+///       stretch
+///
+/// - \f$Q^{N}\f$: The isometry matrix, which describes the rigid
+///   transformation that de-rotates (de-reflects, etc.) a superlattice of
+///   child. A property of \f$Q^{N}\f$ is that \f$(Q^{N})^{-1} ==
+///   (Q^{N})^{T}\f$. It is equal to:
+///
+///       isometry
+///
+/// Thus:
+/// - \f$L_1 * T_1 * N\f$: A parent supercell lattice, as a column vector
+///   matrix. It is equal to:
+///
+///       parent.superlattice().lat_column_mat()
+///
+/// - \f$V^{N} * Q^{N} * L_2\f$: The mapped and un-deformed child prim lattice,
+///   as a column vector matrix. It is equal to:
+///
+///       child.prim_lattice().lat_column_mat()
+///
+/// - \f$V^{N} * Q^{N} * L_2 * T_2\f$: The mapped and un-deformed child
+///   supercell lattice, as a column vector matrix. It is equal to:
+///
+///       child.superlattice().lat_column_mat()
 ///
 ///
-/// Relating LatticeNode and LatticeMap definitions:
+/// ### Deformation gradient
 ///
-/// Lattice mapping gives relations of the form:
-///     L1 * T1 * N = F^{N} * L2 * T2,           (child -> parent deformation)
-/// Or:
-///     F_reverse^{N} * L1 * T1 * N = L2 * T2    (parent -> child deformation)
+/// The deformation gradient describes the transformation that maps two sets of
+/// lattice vectors. The deformation gradient for transformation of a
+/// superlattice of the child lattice to a superlattice of the parent lattice
+/// can be written:
+/// \f[
+///     F_{child \rightarrow parent} = F = V * Q = Q * U
+/// \f]
+/// The reverse transformation (parent to child transformation) can be written:
+/// \f[
+///     F_{parent \rightarrow child} = F_{reverse} = V_{reverse} *
+///     Q_{reverse} = Q_{reverse} * U_{reverse}
+/// \f]
+/// where \f$Q^{-1} = Q^{\top}\f$, using \f$^{\top}\f$ to indicate matrix
+/// transpose, and \f$V\f$ and \f$U\f$ are symmetric stretch tensors (left and
+/// right, respectively). Similar relations hold for the "reverse"
+/// transformations. Then
+/// \f[
+///     F^{\top} * F = U^{\top} * Q^{-1} * Q * U = U^{2}
+/// \f]
+/// Thus the \link polar_decomposition polar decomposition\endlink of \f$F\f$
+/// can be used to obtain \f$U\f$:
 ///
-/// F can be decomposed:
-///     F = V * Q = Q * U,
-///     where Q.inverse() = Q.transpose(),
-///     V and U are symmetric stretch tensors (left and right, respectively)
+///     U = polar_decomposition(F)
+///     U_reverse = polar_decomposition(F_reverse)
 ///
-///     F.transpose() * F = U.transpose() * Q.inverse() * Q * U = U^2
+/// Relations between "forward" and the "reverse" definitions:
+/// \f[
+///     F_{reverse} = F^{-1} \\
+///     Q_{reverse} * U_{reverse} = Q^{-1} * V^{-1}  \\
+///     Q_{reverse} = Q^{-1} = Q^{\top}  \\
+///     V = U_{reverse}^{-1}  \\
+///     Q = (F_{reverse} * V)^{\top}
+/// \f]
 ///
-/// Relations between F, U, V, Q and the "reverse" definitions:
-///     F_reverse = F.inverse()
-///     -> Q_reverse * U_reverse = Q.inverse() * V.inverse()
-///     -> Q_reverse = Q.inverse() = Q.transpose()
-///     -> V = U_reverse.inverse()
-///     -> Q = (V * F_reverse).transpose()
 ///
-/// The polar decomposition of F gives U:
-///     U = polar_decomposition(F),
-///     or U_reverse = polar_decomposition(F_reverse)
+/// \note Elsewhere in CASM the strain associated with a configuration, whether
+/// as a DoF or in MappedProperties, is defined using the "reverse" sense, as a
+/// transformation of parent (supercell of prim) to child:
+/// \f[
+///     F_{parent \rightarrow child} * L_1 * T_1 * N = L_2 * T_2
+/// \f]
+/// For example, the DoF "Ustrain", is \f$U_{reverse} = $U_{parent \rightarrow
+/// child}\f$.
 ///
-/// The xtal::LatticeNode definitions of stretch and isometry are:
-///     L1 * T1 * N = V^{N} * Q^{N} * L2,
-///     stretch = V^{N} = U_reverse.inverse(),
-///     isometry = Q^{N} = (V * F_reverse).transpose()
 ///
-/// The xtal::LatticeMap solutions are defined:
-///     lattice_map.child_matrix() = lattice_map.deformation_gradient() *
-///                                  lattice_map.parent_matrix() *
-///                                  lattice_map.matrixN()
-/// Where:
-///     lattice_map.deformation_gradient() = F_reverse^{N}
-///     lattice_map.matrixN() = N
-///     lattice_map.parent_matrix() = L1 * T1
-///     lattice_map.child_matrix() = L2 * T2
+/// ### Relating LatticeNode and LatticeMap definitions:
+///
+/// The LatticeMap class performs searches over possible lattice mappings in
+/// order to find low deformation cost mappings. It generates solutions \f($N,
+/// F_{reverse}^{N}})\f$ that satisfy:
+/// \f[
+///     F_{reverse}^{N} * L_1 * T_1 * N = L_2 * T_2
+/// \f]
+/// - \f$F_{reverse}^{N}\f$: \code lattice_map.deformation_gradient() \endcode
+/// - \f$L_1 * T_1\f$: \code lattice_map.parent_matrix() \endcode
+/// - \f$N\f$: \code lattice_map.matrixN() \endcode
+/// - \f$L_2 * T_2\f$: \code lattice_map.child_matrix() \endcode
 ///
 /// So relating xtal::LatticeMap definitions and xtal::LatticeNode defintions:
+///
 ///     lattice_node.stretch = polar_decomposition(
-///                  lattice_map.deformation_gradient()).inverse();
+///                                lattice_map.deformation_gradient()).inverse();
 ///     lattice_node.isometry = (lattice_map.deformation_gradient() *
 ///                              lattice_node.stretch).transpose();
+///
 
 /// Construct LatticeNode, setting all members directly
 LatticeNode::LatticeNode(Superlattice _parent, Superlattice _child,
@@ -364,16 +402,33 @@ LatticeNode::LatticeNode(Superlattice _parent, Superlattice _child,
       "!= _child.superlattice().lat_column_mat()");
 }
 
+// TODO: remove child_N_atom, as it does nothing
+
+/// \brief Construct a LatticeNode by calculating the deformation tensor that
+/// maps a particular child superlattice to a particular parent superlattice
+/// [deprecated]
+///
+/// \param parent_prim primitive lattice being mapped to (\f$L_1\f$)
+/// \param parent_scel exact integral multiple of parent_prim (\f$L_1 * T_1 *
+///     N\f$)
+/// \param unmapped_child_prim primitive lattice being mapped (\f$L_2\f$)
+/// \param unmapped_child_scel exact integral multiple of child_prim (\f$L_2 *
+///     T_2\f$)
+/// \param child_N_atom is number of sites in the child (Not used)
+/// \param _cost is used to specify mapping cost (in default case -- big_inf()
+/// -- cost will be calculated from scratch)
+///
+/// Note: This method is deprecated. Prefer using \ref make_lattice_node_1.
 LatticeNode::LatticeNode(Lattice const &parent_prim, Lattice const &parent_scel,
-                         Lattice const &child_prim, Lattice const &child_scel,
-                         Index child_N_atom,
+                         Lattice const &unmapped_child_prim,
+                         Lattice const &unmapped_child_scel, Index child_N_atom,
                          double _cost /*=StrucMapping::big_inf()*/)
     : parent(parent_prim, parent_scel),
       // Transform child_prim lattice to its idealized state using same
       // F.inverse as below, but inline:
       child(Lattice((parent_scel.lat_column_mat() *
-                     child_scel.inv_lat_column_mat()) *
-                        child_prim.lat_column_mat(),
+                     unmapped_child_scel.inv_lat_column_mat()) *
+                        unmapped_child_prim.lat_column_mat(),
                     parent_prim.tol()),
             parent_scel),
       cost(_cost) {
@@ -385,7 +440,7 @@ LatticeNode::LatticeNode(Lattice const &parent_prim, Lattice const &parent_scel,
   // child_scel = L2 * T2
   // F_reverse * L1 * T1 * N = L2 * T2
   Eigen::Matrix3d F_reverse =
-      child_scel.lat_column_mat() * parent_scel.inv_lat_column_mat();
+      unmapped_child_scel.lat_column_mat() * parent_scel.inv_lat_column_mat();
 
   // V = U_reverse.inverse()
   stretch = strain::right_stretch_tensor(F_reverse).inverse();
@@ -401,56 +456,81 @@ LatticeNode::LatticeNode(Lattice const &parent_prim, Lattice const &parent_scel,
   }
 
   check_equal(parent.superlattice().lat_column_mat(),
-              stretch * isometry * child_scel.lat_column_mat(),
-              "LatticeNode constructor error: parent_scel.lat_column_mat() != "
-              "stretch * isometry * child_scel.lat_column_mat()");
+              stretch * isometry * unmapped_child_scel.lat_column_mat(),
+              "LatticeNode constructor error: "
+              "parent.superlattice().lat_column_mat() != "
+              "stretch * isometry * unmapped_child_scel.lat_column_mat()");
 }
 
-LatticeNode::LatticeNode(LatticeMap const &_lat_map, Lattice const &parent_prim,
-                         Lattice const &child_prim)
+/// \brief Construct a LatticeNode using the mapping calculated by LatticeMap
+/// [deprecated]
+///
+/// \param lattice_map The lattice mapping is used to specify
+/// the parent superlattice and the current solution specifies the deformation
+/// gradient and choice of lattice vectors that map a supercell of the unmapped
+/// child to a supercell of the parent. Specifically:
+/// - \f$ L_1 * T_1 \f$ = `lattice_map.parent_matrix()`
+/// - \f$F_{parent \rightarrow child}\f$ = `lattice_map.deformation_gradient()`
+/// - \f$N\f$ = `lattice_map.matrixN`
+/// \param parent_prim primitive lattice being mapped to (\f$L_1\f$)
+/// \param unmapped_child_prim primitive lattice being mapped (\f$L_2\f$)
+///
+/// Note:
+/// - The lattice deformation cost is calculated using the method specified by
+///   `lattice_map`.
+///
+/// Note: This method is deprecated. Prefer using \ref make_lattice_node_2.
+LatticeNode::LatticeNode(LatticeMap const &lattice_map,
+                         Lattice const &parent_prim,
+                         Lattice const &unmapped_child_prim)
     :  // see LatticeNode class documentation for more on relations
        // V = U_reverse.inverse()
-      stretch(polar_decomposition(_lat_map.deformation_gradient()).inverse()),
+      stretch(
+          polar_decomposition(lattice_map.deformation_gradient()).inverse()),
       // Q = (F_reverse * V).transpose()
-      isometry((_lat_map.deformation_gradient() * stretch).transpose()),
+      isometry((lattice_map.deformation_gradient() * stretch).transpose()),
       // parent.prim_lattice() = L1
-      // _lat_map.parent_matrix() = L1 * T1
+      // lattice_map.parent_matrix() = L1 * T1
       // parent.superlattice() = L1 * T1 * N
-      parent(parent_prim, Lattice(_lat_map.parent_matrix() * _lat_map.matrixN(),
-                                  parent_prim.tol())),
+      parent(parent_prim,
+             Lattice(lattice_map.parent_matrix() * lattice_map.matrixN(),
+                     parent_prim.tol())),
       // (mapped) child.prim_lattice() = F * L2
       // (mapped) child.superlattice() = parent.superlattice()
-      child(Lattice(_lat_map.deformation_gradient().inverse() *
-                        child_prim.lat_column_mat(),
+      child(Lattice(lattice_map.deformation_gradient().inverse() *
+                        unmapped_child_prim.lat_column_mat(),
                     parent_prim.tol()),
             parent.superlattice()),
-      cost(_lat_map.strain_cost()),
-      cost_method(_lat_map.cost_method()) {
+      cost(lattice_map.strain_cost()),
+      cost_method(lattice_map.cost_method()) {
   check_equal(
       parent.superlattice().lat_column_mat(),
       child.superlattice().lat_column_mat(),
       "LatticeNode constructor error: parent.superlattice().lat_column_mat() "
       "!= child.superlattice().lat_column_mat()");
   check_equal(
-      _lat_map.deformation_gradient().inverse(), stretch * isometry,
+      lattice_map.deformation_gradient().inverse(), stretch * isometry,
       "LatticeNode constructor error: "
-      "_lat_map.deformation_gradient().inverse() != stretch * isometry");
+      "lattice_map.deformation_gradient().inverse() != stretch * isometry");
 }
 
 /// \brief Construct a LatticeNode by calculating the deformation tensor that
 /// maps a particular child superlattice to a particular parent superlattice
 ///
-/// \param parent_scel and \param child_scel are integer combinations of the
-/// primitive cells 'parent_prim' and 'child_prim', respectively
-/// \param parent_prim primitive lattice being mapped to (L1)
-/// \param parent_scel exact integral multiple of parent_prim (L1 * T1 * N)
-/// \param unmapped_child_prim primitive lattice being mapped (L2)
-/// \param unmapped_child_scel exact integral multiple of child_prim (L2 * T2)
+/// \param parent_prim primitive lattice being mapped to (\f$L_1\f$)
+/// \param parent_scel exact integral multiple of parent_prim (\f$L_1 * T_1 *
+///     N\f$)
+/// \param unmapped_child_prim primitive lattice being mapped (\f$L_2\f$)
+/// \param unmapped_child_scel exact integral multiple of child_prim (\f$L_2 *
+///     T_2\f$)
 ///
 /// Note:
 /// - In result: `parent_scel = stretch * isometry * unmapped_child_scel'
 /// - The lattice deformation cost is calculated using
 ///   `isotropic_strain_cost(stretch)`
+///
+/// \anchor make_lattice_node_1
+/// \relates LatticeNode
 ///
 LatticeNode make_lattice_node(Lattice const &parent_prim,
                               Lattice const &parent_scel,
@@ -503,23 +583,30 @@ LatticeNode make_lattice_node(Lattice const &parent_prim,
 
 /// \brief Construct a LatticeNode using the mapping calculated by LatticeMap
 ///
-/// \param _lat_map LatticeMap used to map `unmapped_child_prim` to
-///     `parent_prim`
-/// \param parent_prim primitive lattice being mapped to (L1)
-/// \param unmapped_child_prim primitive lattice being mapped (L2)
+/// \param lattice_map The lattice mapping is used to specify
+/// the parent superlattice and the current solution specifies the deformation
+/// gradient and choice of lattice vectors that map a supercell of the unmapped
+/// child to a supercell of the parent. Specifically, it specifies:
+/// - \f$ L_1 * T_1 \f$ = `lattice_map.parent_matrix()`
+/// - \f$F_{parent \rightarrow child}\f$ = `lattice_map.deformation_gradient()`
+/// - \f$N\f$ = `lattice_map.matrixN`
+/// \param parent_prim primitive lattice being mapped to (\f$L_1\f$)
+/// \param unmapped_child_prim primitive lattice being mapped (\f$L_2\f$)
 ///
 /// Note:
-/// - In result: `parent_scel = stretch * isometry * unmapped_child_scel'
 /// - The lattice deformation cost is calculated using the method specified by
-///   `_lat_map`.
+///   `lattice_map`.
 ///
-LatticeNode make_lattice_node(LatticeMap const &_lat_map,
+/// \anchor make_lattice_node_2
+/// \relates LatticeNode
+///
+LatticeNode make_lattice_node(LatticeMap const &lattice_map,
                               Lattice const &parent_prim,
                               Lattice const &unmapped_child_prim) {
   // see LatticeNode class documentation for more on relations
 
   // F_reverse * L1 * T1 * N = L2 * T2
-  Eigen::Matrix3d F_reverse = _lat_map.deformation_gradient();
+  Eigen::Matrix3d F_reverse = lattice_map.deformation_gradient();
 
   // V = U_reverse.inverse()
   Eigen::Matrix3d stretch = polar_decomposition(F_reverse).inverse();
@@ -529,20 +616,20 @@ LatticeNode make_lattice_node(LatticeMap const &_lat_map,
 
   // parent.prim_lattice() = L1
   // parent.superlattice() = L1 * T1 * N
-  Lattice parent_scel{_lat_map.parent_matrix() * _lat_map.matrixN(),
+  Lattice parent_scel{lattice_map.parent_matrix() * lattice_map.matrixN(),
                       parent_prim.tol()};
   Superlattice parent{parent_prim, parent_scel};
 
   // mapped_child_prim = F * L2 = F_reverse.inverse() * L2
-  Lattice mapped_child_prim{_lat_map.deformation_gradient().inverse() *
+  Lattice mapped_child_prim{lattice_map.deformation_gradient().inverse() *
                             unmapped_child_prim.lat_column_mat()};
 
   // (mapped) child.prim_lattice() = F * L2
   // (mapped) child.superlattice() = parent.superlattice()
   Superlattice mapped_child{mapped_child_prim, parent_scel};
 
-  double cost = _lat_map.strain_cost();
-  std::string cost_method = _lat_map.cost_method();
+  double cost = lattice_map.strain_cost();
+  std::string cost_method = lattice_map.cost_method();
 
   return LatticeNode(parent, mapped_child, stretch, isometry, cost,
                      cost_method);
@@ -551,6 +638,7 @@ LatticeNode make_lattice_node(LatticeMap const &_lat_map,
 //*******************************************************************************************
 
 /// \brief Compare two LatticeMap objects, based on their mapping cost
+/// \relates LatticeNode
 bool less(LatticeNode const &A, LatticeNode const &B, double cost_tol) {
   if (!almost_equal(A.cost, B.cost, cost_tol)) return A.cost < B.cost;
   if (A.child.transformation_matrix_to_super() !=
@@ -566,6 +654,7 @@ bool less(LatticeNode const &A, LatticeNode const &B, double cost_tol) {
 
 //*******************************************************************************************
 
+/// \relates LatticeNode
 bool identical(LatticeNode const &A, LatticeNode const &B, double cost_tol) {
   if (!almost_equal(A.cost, B.cost, cost_tol)) return false;
   if (A.parent.transformation_matrix_to_super() !=
@@ -589,6 +678,7 @@ bool AssignmentNode::operator<(AssignmentNode const &B) const {
 
 //*******************************************************************************************
 
+/// \relates AssignmentNode
 bool identical(AssignmentNode const &A, AssignmentNode const &B) {
   if (A.empty() != B.empty()) return false;
   if (A.time_reversal != B.time_reversal) return false;
@@ -628,7 +718,9 @@ bool identical(AssignmentNode const &A, AssignmentNode const &B) {
 ///         unmapped_child.atom_info.coords.col(perm[i]) +
 ///             mapping.atomic_node.translation,
 ///
-///     where perm = mapping.atom_permutation.
+///     where perm = mapping.atom_permutation, and
+///     due to mapping within periodic boundaries, coordinate comparisons
+///     must be made checking for equality up to a lattice translation.
 ///
 /// Additionally, `mapping.mol_map`, and `mapping.mol_labels` hold
 /// information used for on molecule mapping:
@@ -649,7 +741,9 @@ bool identical(AssignmentNode const &A, AssignmentNode const &B) {
 ///     where mol_displacement is 3xN matrix, mol_displacement.col(i) =
 ///         mean of mapping.atom_displacement.col(j),
 ///         for j in mapping.mol_map[i],
-///     N is number of sites in parent_superstructure
+///     N is number of sites in parent_superstructure, and
+///     due to mapping within periodic boundaries, coordinate comparisons
+///     must be made checking for equality up to a lattice translation.
 ///
 ///
 /// DoF / properties are mapped according to:
@@ -732,7 +826,7 @@ bool MappingNode::operator<(MappingNode const &B) const {
 /// Note: this documentation uses the notation and conventions from the paper
 /// `Comparing crystal structures with symmetry and geometry`,
 /// by John C Thomas, Anirudh Raju Natarajan, Anton Van der Ven
-
+///
 /// In general, structure mapping may require mapping a superstructure of the
 /// child structure to a superstructure of the parent structure. In this
 /// method, lattice mapping is done first, then atomic assignment for each
@@ -764,8 +858,9 @@ bool MappingNode::operator<(MappingNode const &B) const {
 /// ---------------
 ///
 /// Solving:
-///
-///     L1 * T1 * N = V^{N} * Q^{N} * L2 * T2,
+/// \f[
+///     L_1 * T_1 * N = V^{N} * Q^{N} * L_2 * T_2
+/// \f]
 ///
 /// L1: Parent lattice (lattice of reference structure)
 /// T1: Integer transformation matrix to parent superlattice
@@ -1178,7 +1273,8 @@ std::set<MappingNode> StrucMapper::map_ideal_struc(
 /// mapping k. Solutions with cost great than (worse than) `max_cost` will never
 /// be included. Solutions with cost less than (better than) `min_cost` will
 /// always be included and do not count against `k`.
-/// - Candidate initial parent superlattices (L1 * T1) are determined from:
+/// - Candidate initial parent superlattices (\f$L_1 * T_1\f$) are determined
+///   from:
 ///   - The range of possible volumes (integer volume multiple of the parent
 ///     lattice volume) is calculated to be consistent with `min_va_frac`,
 ///     `max_va_frac`, `max_volume_change`, the parent structure and allowed
@@ -1190,9 +1286,10 @@ std::set<MappingNode> StrucMapper::map_ideal_struc(
 ///   - If a lattice filter has been set, then enumerated lattices must pass
 ///     the lattice filter.
 /// - Given an initial parent superlattice, the k-best scoring lattice mapping
-///   solutions (N, F^{N}), where (L1 * T1) * N = F^{N} * L2 are kept and used
-///   as the starting point for atomic assignment. The symmetry-breaking
-///   lattice deformation cost is used if `symmetrize_lattice_cost==true`.
+///   solutions \f$(N, F^{N})\f$, where \f$(L_1 * T_1) * N = F^{N} * L_2\f$ are
+///   kept and used as the starting point for atomic assignment. The symmetry-
+///   breaking lattice deformation cost is used if
+///   `symmetrize_lattice_cost==true`.
 /// - Given a lattice mapping, candidate atomic assignments are determined by:
 ///   - First, finding a site in child whose occupant has the lowest number of
 ///     compatible sites in the parent. This will minimize translations that
@@ -1308,15 +1405,17 @@ std::set<MappingNode> StrucMapper::map_deformed_struc_impose_lattice_vols(
 ///   considered.
 /// - The child structure may be mapped to a parent superlattice that is
 ///   identical to `imposed_lat`, but with differing lattice vectors (i.e. the
-///   lattice mapping may be L1 * T1 * N = F^{N} * L2, where L1 * T1 equals
-///   `imposed_lat`, and N is a unimodular matrix that may not be I.)
+///   lattice mapping may be \f$L_1 * T_1 * N = F^{N} * L_2\f$, where \f$L_1 *
+///   T_1\f$ equals `imposed_lat`, and \f$N\f$ is a unimodular matrix that may
+///   not be \f$I\f$.)
 /// - All assignment is the same as in `map_deformed_struc`.
 ///
 /// \param child_struc Input structure to be mapped onto parent structure
-/// \param imposed_lat The imposed parent superlattice, `imposed_lat = L1 * T1`.
+/// \param imposed_lat The imposed parent superlattice, `imposed_lat` = \f$L1 *
+///     T1\f$.
 /// \param k Number of k-best mapping relations to return
 /// \param max_cost Search will terminate once no mappings better than
-/// max_cost are found
+///     max_cost are found
 /// \param min_cost All mappings better than min_cost will be reported,
 ///     without contributing to 'k'
 /// \param keep_invalid If true, invalid mappings (when an atomic assignment
@@ -1352,9 +1451,9 @@ std::set<MappingNode> StrucMapper::map_deformed_struc_impose_lattice(
 /// - All assignment is the same as in `map_deformed_struc`.
 ///
 /// \param child_struc Input structure to be mapped onto parent structure
-/// \param imposed_node The imposed lattice mapping, encodes T1, N, F^{N} in
-///     the lattice mapping relationship `L1 * T1 * N = F^{N} * L2`, along with
-///     the lattice deformation cost.
+/// \param imposed_node The imposed lattice mapping, encodes \f$T_1, N, F^{N\f$
+///     in the lattice mapping relationship \f$L_1 * T_1 * N = F^{N} * L_2\f$,
+///     along with the lattice deformation cost.
 /// \param k Number of k-best mapping relations to return
 /// \param max_cost Search will terminate once no mappings better than
 /// max_cost are found

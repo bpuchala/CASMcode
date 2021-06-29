@@ -22,6 +22,13 @@ void assert_mapping_relations(std::set<xtal::MappingNode> const &mappings,
                               xtal::StrucMapper const &mapper,
                               xtal::SimpleStructure const &unmapped_child);
 
+// \brief Confirm that the MappingNode maps the unmapped child to the mapped
+// child
+void assert_mapping_relations(xtal::MappingNode const &mapping,
+                              xtal::SimpleStructure const &parent,
+                              xtal::SimpleStructure const &mapped_child,
+                              xtal::SimpleStructure const &unmapped_child);
+
 xtal::BasicStructure make_bcc_basicstructure() {
   // binary {A, B} conventional BCC base structure
 
@@ -332,125 +339,135 @@ void assert_mapping_relations(std::set<xtal::MappingNode> const &mappings,
   for (xtal::MappingNode const &mapping : mappings) {
     xtal::SimpleStructure mapped_child =
         mapper.calculator().resolve_setting(mapping, unmapped_child);
-    xtal::Lattice mapped_child_lattice(mapped_child.lat_column_mat);
+    assert_mapping_relations(mapping, parent, mapped_child, unmapped_child);
+  }
+}
 
-    // lattice mapping relations:
-    //
-    //     L1 * T1 * N = V^{N} * Q^{N} * L2 * T2
-    //
-    // lattice_node.parent.prim_lattice() = L1
-    // lattice_node.parent.superlattice() = L1 * T1 * N
-    // lattice_node.child.prim_lattice() = V^{N} * Q^{N} * L2
-    // lattice_node.child.superlattice() = V^{N} * Q^{N} * L2 * T2
-    // S1 = L1 * T1
-    // S2 = L2 * T2
-    // mapped_child.lat_column_mat = Q^{N} * L2 * T2
+// \brief Confirm that the MappingNode maps the unmapped child to the mapped
+// child
+void assert_mapping_relations(xtal::MappingNode const &mapping,
+                              xtal::SimpleStructure const &parent,
+                              xtal::SimpleStructure const &mapped_child,
+                              xtal::SimpleStructure const &unmapped_child) {
+  xtal::Lattice mapped_child_lattice(mapped_child.lat_column_mat);
 
-    xtal::LatticeNode const &lattice_node = mapping.lattice_node;
-    Eigen::Matrix3d S1xN = lattice_node.parent.superlattice().lat_column_mat();
-    Eigen::Matrix3l T1xN = lattice_node.parent.transformation_matrix_to_super();
-    Eigen::Matrix3d L2 = unmapped_child.lat_column_mat;
-    Eigen::Matrix3l T2 = lattice_node.child.transformation_matrix_to_super();
-    Eigen::Matrix3d S2 = L2 * T2.cast<double>();
-    Eigen::Matrix3d V = lattice_node.stretch;
-    Eigen::Matrix3d Q = lattice_node.isometry;
-    Eigen::Matrix3d U_reverse = V.inverse();
+  // lattice mapping relations:
+  //
+  //     L1 * T1 * N = V^{N} * Q^{N} * L2 * T2
+  //
+  // lattice_node.parent.prim_lattice() = L1
+  // lattice_node.parent.superlattice() = L1 * T1 * N
+  // lattice_node.child.prim_lattice() = V^{N} * Q^{N} * L2
+  // lattice_node.child.superlattice() = V^{N} * Q^{N} * L2 * T2
+  // S1 = L1 * T1
+  // S2 = L2 * T2
+  // mapped_child.lat_column_mat = Q^{N} * L2 * T2
 
-    ASSERT_TRUE(almost_equal(S1xN, V * Q * S2));
-    ASSERT_TRUE(almost_equal(mapped_child.lat_column_mat, Q * S2));
+  xtal::LatticeNode const &lattice_node = mapping.lattice_node;
+  Eigen::Matrix3d S1xN = lattice_node.parent.superlattice().lat_column_mat();
+  Eigen::Matrix3l T1xN = lattice_node.parent.transformation_matrix_to_super();
+  Eigen::Matrix3d L2 = unmapped_child.lat_column_mat;
+  Eigen::Matrix3l T2 = lattice_node.child.transformation_matrix_to_super();
+  Eigen::Matrix3d S2 = L2 * T2.cast<double>();
+  Eigen::Matrix3d V = lattice_node.stretch;
+  Eigen::Matrix3d Q = lattice_node.isometry;
+  Eigen::Matrix3d U_reverse = V.inverse();
 
-    xtal::SimpleStructure parent_superstructure =
-        make_superstructure(T1xN.cast<int>(), parent);
-    parent_superstructure.within();
+  ASSERT_TRUE(almost_equal(S1xN, V * Q * S2));
+  ASSERT_TRUE(almost_equal(mapped_child.lat_column_mat, Q * S2));
 
-    // atomic assignment relations:
-    //
-    //     mapped_child.mol_info.names[i] =
-    //         unmapped_child.atom_info.names[perm[i]],
-    //
-    //     mapped_child.atom_info.coords.col(i) =
-    //         parent_superstructure.coords(i) +
-    //         mapping.atom_displacement.col(i) =
-    //         mapping.lattice_node.stretch * mapping.lattice_node.isometry *
-    //         unmapped_child.atom_info.coords.col(perm[i]) +
-    //             mapping.atomic_node.translation,
-    //
-    //     where perm = mapping.atom_permutation.
+  xtal::SimpleStructure parent_superstructure =
+      make_superstructure(T1xN.cast<int>(), parent);
+  parent_superstructure.within();
 
-    auto const &perm = mapping.atom_permutation;
-    auto const &trans = mapping.atomic_node.translation;
+  // atomic assignment relations:
+  //
+  //     mapped_child.mol_info.names[i] =
+  //         unmapped_child.atom_info.names[perm[i]],
+  //
+  //     mapped_child.atom_info.coords.col(i) =
+  //         parent_superstructure.coords(i) +
+  //         mapping.atom_displacement.col(i) =
+  //         mapping.lattice_node.stretch * mapping.lattice_node.isometry *
+  //         unmapped_child.atom_info.coords.col(perm[i]) +
+  //             mapping.atomic_node.translation,
+  //
+  //     where perm = mapping.atom_permutation, and
+  //     due to mapping within periodic boundaries, coordinates comparisons
+  //     must be made checking for equality up to a lattice translation.
 
-    ASSERT_EQ(mapped_child.mol_info.size(),
-              unmapped_child.atom_info.size() * T2.determinant());
+  auto const &perm = mapping.atom_permutation;
+  auto const &trans = mapping.atomic_node.translation;
+
+  ASSERT_EQ(mapped_child.mol_info.size(),
+            unmapped_child.atom_info.size() * T2.determinant());
+  // TODO: update this ^ when mapping molecules
+
+  for (Index i = 0; i < mapped_child.mol_info.size(); ++i) {
+    // assert permutation maps atom names -> mol names
+    ASSERT_EQ(mapped_child.mol_info.names[i],
+              unmapped_child.atom_info.names[perm[i]]);
     // TODO: update this ^ when mapping molecules
 
-    for (Index i = 0; i < mapped_child.mol_info.size(); ++i) {
-      // assert permutation maps atom names -> mol names
-      ASSERT_EQ(mapped_child.mol_info.names[i],
-                unmapped_child.atom_info.names[perm[i]]);
-      // TODO: update this ^ when mapping molecules
+    // compare coordinates using parent superlattice:
+    {
+      // r1[i] + disp[i] = V * Q * r2[perm[i]] + trans
 
-      // compare coordinates using parent superlattice:
-      {
-        // r1[i] + disp[i] = V * Q * r2[perm[i]] + trans
+      // mapped child coordinates, stretched to match parent superlattice
+      // r = V * r[i]
+      xtal::Coordinate mapped_child_coord(
+          V * mapped_child.mol_info.coords.col(i),
+          lattice_node.parent.superlattice(), CART);
 
-        // mapped child coordinates, stretched to match parent superlattice
-        // r = V * r[i]
-        xtal::Coordinate mapped_child_coord(
-            V * mapped_child.mol_info.coords.col(i),
-            lattice_node.parent.superlattice(), CART);
+      // displaced, but not deformed parent coordinate, in parent superlattice
+      // r = r1[i] + disp[i]
+      xtal::Coordinate displaced_parent_coord(
+          parent_superstructure.atom_info.coords.col(i) +
+              mapping.atom_displacement.col(i),
+          lattice_node.parent.superlattice(), CART);
 
-        // displaced, but not deformed parent coordinate, in parent superlattice
-        // r = r1[i] + disp[i]
-        xtal::Coordinate displaced_parent_coord(
-            parent_superstructure.atom_info.coords.col(i) +
-                mapping.atom_displacement.col(i),
-            lattice_node.parent.superlattice(), CART);
+      // unmapped child coordinates, transformed to match parent superlattice:
+      // r = V * Q * r2[perm[i]] + trans
+      xtal::Coordinate transformed_child_coord(
+          V * Q * unmapped_child.atom_info.coords.col(perm[i]) + trans,
+          lattice_node.parent.superlattice(), CART);
 
-        // unmapped child coordinates, transformed to match parent superlattice:
-        // r = V * Q * r2[perm[i]] + trans
-        xtal::Coordinate transformed_child_coord(
-            V * Q * unmapped_child.atom_info.coords.col(perm[i]) + trans,
-            lattice_node.parent.superlattice(), CART);
+      ASSERT_TRUE(transformed_child_coord.robust_min_dist(
+                      displaced_parent_coord) < TOL);
+      ASSERT_TRUE(mapped_child_coord.robust_min_dist(displaced_parent_coord) <
+                  TOL);
+      ASSERT_TRUE(mapped_child_coord.robust_min_dist(transformed_child_coord) <
+                  TOL);
+    }
 
-        ASSERT_TRUE(transformed_child_coord.robust_min_dist(
-                        displaced_parent_coord) < TOL);
-        ASSERT_TRUE(mapped_child_coord.robust_min_dist(displaced_parent_coord) <
-                    TOL);
-        ASSERT_TRUE(
-            mapped_child_coord.robust_min_dist(transformed_child_coord) < TOL);
-      }
+    // compare coordinates using mapped_child_lattice
+    {
+      // U_reverse * (r1[i] + disp[i]) = Q * r2[perm[i]] + U_reverse * trans
 
-      // compare coordinates using mapped_child_lattice
-      {
-        // U_reverse * (r1[i] + disp[i]) = Q * r2[perm[i]] + U_reverse * trans
+      // mapped child coordinates, stretched to match parent superlattice
+      // r = r[i]
+      xtal::Coordinate mapped_child_coord(mapped_child.mol_info.coords.col(i),
+                                          mapped_child_lattice, CART);
 
-        // mapped child coordinates, stretched to match parent superlattice
-        // r = r[i]
-        xtal::Coordinate mapped_child_coord(mapped_child.mol_info.coords.col(i),
-                                            mapped_child_lattice, CART);
+      // displaced, but not deformed parent coordinate, in parent superlattice
+      // r = U_reverse * (r1[i] + disp[i])
+      xtal::Coordinate displaced_parent_coord(
+          U_reverse * (parent_superstructure.atom_info.coords.col(i) +
+                       mapping.atom_displacement.col(i)),
+          mapped_child_lattice, CART);
 
-        // displaced, but not deformed parent coordinate, in parent superlattice
-        // r = U_reverse * (r1[i] + disp[i])
-        xtal::Coordinate displaced_parent_coord(
-            U_reverse * (parent_superstructure.atom_info.coords.col(i) +
-                         mapping.atom_displacement.col(i)),
-            mapped_child_lattice, CART);
+      // unmapped child coordinates, transformed to match parent superlattice:
+      // r = Q * r2[perm[i]] + U_reverse * trans
+      xtal::Coordinate transformed_child_coord(
+          Q * unmapped_child.atom_info.coords.col(perm[i]) + U_reverse * trans,
+          mapped_child_lattice, CART);
 
-        // unmapped child coordinates, transformed to match parent superlattice:
-        // r = Q * r2[perm[i]] + U_reverse * trans
-        xtal::Coordinate transformed_child_coord(
-            Q * unmapped_child.atom_info.coords.col(perm[i]) +
-                U_reverse * trans,
-            mapped_child_lattice, CART);
-
-        ASSERT_TRUE(transformed_child_coord.robust_min_dist(
-                        displaced_parent_coord) < TOL);
-        ASSERT_TRUE(mapped_child_coord.robust_min_dist(displaced_parent_coord) <
-                    TOL);
-        ASSERT_TRUE(
-            mapped_child_coord.robust_min_dist(transformed_child_coord) < TOL);
-      }
+      ASSERT_TRUE(transformed_child_coord.robust_min_dist(
+                      displaced_parent_coord) < TOL);
+      ASSERT_TRUE(mapped_child_coord.robust_min_dist(displaced_parent_coord) <
+                  TOL);
+      ASSERT_TRUE(mapped_child_coord.robust_min_dist(transformed_child_coord) <
+                  TOL);
     }
   }
 }

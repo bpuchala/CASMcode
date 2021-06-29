@@ -12,20 +12,34 @@ namespace CASM {
 namespace xtal {
 struct SymOp;
 
-/**
- * DoFSet specifies all identifying information for a vector of continuous
- * independent variables (Degrees of Freedom / DoFs) DoFSets are associated with
- * a specific DoF 'type', which has a predefined 'standard' coordinate system
- * ex: displacement -> 3-vector (x,y,z) -> displacement components (relative to
- * fixed laboratory frame) strain -> 6-vector (e_xx, e_yy, e_zz, sqrt(2)*e_yz,
- * sqrt(2)*e_xz, sqrt(2)*e_xy) -> tensor elements DoFSets have a typename, which
- * specifies the type, and a set of basis vectors, which are denoted relative to
- * the DoF type's standard axes. This allows the DoFSet components to be
- * specified by the user, including the ability to only allow DoF values within
- * a subspace of the standard values. DoFSet records  the DoF typename, the
- * names of the vector components, and the axes of the vector components
- * (relative to a set of standard axes)
- */
+/// xtal::DoFSet: A set of degrees of freedom (DoF)
+///
+/// \note This is CASM::xtal::DoFSet, used to define DoF for
+/// xtal::BasicStructure. It is similar to, but distinct from, CASM::DoFSet
+/// which is used to construct basis functions. Typical users will only use
+/// CASM::xtal::DoFSet and CASM::xtal::SiteDoFSet directly.
+///
+/// DoFSet specifies all identifying information for a vector of continuous
+/// independent variables. It is used for global variables, such as strain, and
+/// inherited by SiteDoFSet for site variables, such as site displacements.
+///
+/// A DoFSet has:
+///     - AnisoValTraits, which provides the DoF type name, defines a standard
+///     coordinate system (the "standard basis"), and specifies how values
+///     transform under application of symmetry.
+///     - a "DoF basis", a set of named basis vectors which are denoted relative
+///     to the standard basis, allowing the user to specify the DoFSet
+///     components, name them, and restrict DoF values to a particular
+///     subspace. The basis is stored as a matrix. Columns of the basis matrix
+///     represent the coordinate axes of the "DoF basis" in terms of the
+///     standard basis.
+///
+/// Examples of global standard basis specified by AnisoValTraits:
+/// - "disp" -> (dx, dy, dz) -> displacement components relative to fixed
+/// laboratory frame
+/// - "strain" -> (e_xx, e_yy, e_zz, sqrt(2)*e_yz, sqrt(2)*e_xz, sqrt(2)*e_xy)
+/// -> tensor elements
+///
 class DoFSet {
  public:
   using BasicTraits = AnisoValTraits;
@@ -86,12 +100,38 @@ class DoFSet {
 /// AnisoValTraits::variable_descriptors()
 std::vector<std::string> component_descriptions(DoFSet const &dofset);
 
-/**
- * Identical to xtal::DoFSet, but also keeps track of a list of molecule names
- * that the DoFSet does not apply to. For example, don't apply displacements to
- * a vacancy.
- */
-
+/// xtal::SiteDoFSet: A set of site degrees of freedom (DoF)
+///
+/// \note This is CASM::xtal::SiteDoFSet, used to define site DoF for
+/// xtal::BasicStructure. It is similar to, but distinct from, CASM::DoFSet
+/// which is used to construct basis functions. Typical users will only use
+/// CASM::xtal::DoFSet and CASM::xtal::SiteDoFSet directly.
+///
+/// SiteDoFSet specifies all identifying information for a vector of continuous
+/// independent site variables. It is inherits from and is mostly identical to
+/// xtal::DoFSet, but also keeps track of a list of molecule names that the
+/// SiteDoFSet does not apply to. For example, "don't apply displacements to a
+/// vacancy".
+///
+/// A SiteDoFSet has:
+///     - AnisoValTraits, which provides the DoF type name, defines a standard
+///     coordinate system (the "standard basis"), and specifies how values
+///     transform under application of symmetry.
+///     - a "DoF basis", a set of named basis vectors which are denoted
+///     relative to the standard basis, allowing the user to specify the DoFSet
+///     components, name them, and restrict DoF values to a particular
+///     subspace. The basis is stored as a matrix. Columns of the basis matrix
+///     represent the coordinate axes of the "DoF basis" in terms of the
+///     standard basis.
+///     - a list of site occupants for which the DoF does not apply
+///     ("excluded_occupants", std::unordered_set<std::string>). As an
+///     example, this could be used if some allowed site occupant molecules
+///     have magnetic spin, but other allowed occupants do not.
+///
+/// Examples of site standard basis specified by AnisoValTraits:
+/// - "disp" -> (dx, dy, dz) -> displacement components relative to fixed
+/// laboratory frame
+///
 class SiteDoFSet : public DoFSet {
  public:
   SiteDoFSet(const DoFSet &init_dofset,

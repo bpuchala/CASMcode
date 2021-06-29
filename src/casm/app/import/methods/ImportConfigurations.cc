@@ -311,13 +311,13 @@ jsonParser &to_json(
         Configuration const &canonical_configuration =
             *config_data.insert_result.canonical_it;
 
-        xtal::SimpleStructure simple_structure = make_simple_structure(
-            canonical_configuration.supercell(),
-            canonical_configuration.configdof(), mapping.properties, {}, false);
+        xtal::SimpleStructure simple_structure =
+            make_simple_structure(canonical_configuration.supercell(),
+                                  canonical_configuration.configdof());
 
         xtal::SimpleStructure simple_structure_relaxed = make_simple_structure(
             canonical_configuration.supercell(),
-            canonical_configuration.configdof(), mapping.properties, {}, true);
+            canonical_configuration.configdof(), mapping.properties);
 
         to_json(simple_structure, mapping_json["structure"], {},
                 coordinate_mode);

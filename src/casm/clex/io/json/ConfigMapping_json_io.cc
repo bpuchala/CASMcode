@@ -212,7 +212,7 @@ void parse(InputParser<ConfigMapperSettings> &parser,
     settings.auto_lattice_volume_range = true;
   } else if (count > 1) {
     std::stringstream msg;
-    msg << "Error: One or zero lattice-mapping method may be used. Options are "
+    msg << "Error: One or zero lattice mapping method may be used. Options are "
            "\"fix_ideal\", \"fix_lattice_mapping\", \"fix_lattice\", "
            "\"fix_lattice_volume_range\", \"auto_lattice_volume_range\" "
            "(default).";
@@ -295,7 +295,7 @@ void parse(InputParser<ConfigMapperSettings> &parser,
   parser.value = notstd::clone(settings);
 }
 
-ENUM_TRAITS(ConfigMapperResult::HintStatus)
+ENUM_TRAITS(ConfigComparison)
 
 namespace {
 
@@ -306,28 +306,35 @@ jsonParser &to_json(SymOp const &op, jsonParser &json) {
   return json;
 }
 
-jsonParser &to_json(ConfigMapperResult::ConfigurationMapping const &mapping,
-                    jsonParser &json, COORD_TYPE coordinate_mode) {
+jsonParser &to_json(ConfigurationMapping const &mapping, jsonParser &json,
+                    COORD_TYPE coordinate_mode) {
   to_json(mapping.mapping, json["mapping"]);  // xtal::MappingNode
-  to_json(mapping.mapped_child, json["mapped_child"], {}, coordinate_mode);
-  json["mapped_configuration"] = mapping.mapped_configuration;
-  json["mapped_properties"] = mapping.mapped_properties;
+  to_json(mapping.mapped_child, json["mapped"]["structure"], {},
+          coordinate_mode);
+  json["mapped"]["configuration"] = mapping.mapped_configuration;
+  json["mapped"]["properties"] = mapping.mapped_properties;
 
   to_json(mapping.symop_to_canon_scel, json["symop_to_canon_scel"]);
   to_json(mapping.permutation_to_canon_scel.perm_array(),
           json["permutation_to_canon_scel"]);
   json["transformation_matrix_to_canon_scel"] =
       mapping.transformation_matrix_to_canon_scel;
-  json["configuration_in_canon_scel"] = mapping.configuration_in_canon_scel;
-  json["properties_in_canon_scel"] = mapping.properties_in_canon_scel;
+  to_json(mapping.structure_in_canon_scel,
+          json["in_canonical_supercell"]["structure"], {}, coordinate_mode);
+  json["in_canonical_supercell"]["configuration"] =
+      mapping.configuration_in_canon_scel;
+  json["in_canonical_supercell"]["properties"] =
+      mapping.properties_in_canon_scel;
 
   to_json(mapping.symop_to_final, json["symop_to_final"]);
   to_json(mapping.permutation_to_final.perm_array(),
           json["permutation_to_final"]);
-  json["final_configuration"] = mapping.final_configuration;
-  json["final_properties"] = mapping.final_properties;
+  to_json(mapping.final_structure, json["final"]["structure"], {},
+          coordinate_mode);
+  json["final"]["configuration"] = mapping.final_configuration;
+  json["final"]["properties"] = mapping.final_properties;
 
-  if (mapping.hint_status != ConfigMapperResult::HintStatus::None) {
+  if (mapping.hint_status != ConfigComparison::None) {
     json["hint_status"] = to_string(mapping.hint_status);
     json["hint_cost"] = mapping.hint_cost;
   }
@@ -353,15 +360,15 @@ jsonParser &to_json(ConfigMapperResult const &config_mapping_result,
   return json;
 }
 
-const std::string traits<ConfigMapperResult::HintStatus>::name = "hint_status";
+const std::string traits<ConfigComparison>::name = "hint_status";
 
-const std::multimap<ConfigMapperResult::HintStatus, std::vector<std::string> >
-    traits<ConfigMapperResult::HintStatus>::strval = {
-        {ConfigMapperResult::HintStatus::None, {"None"}},
-        {ConfigMapperResult::HintStatus::Derivative, {"Derivative"}},
-        {ConfigMapperResult::HintStatus::Equivalent, {"Equivalent"}},
-        {ConfigMapperResult::HintStatus::Identical, {"Identical"}},
-        {ConfigMapperResult::HintStatus::Derivative, {"NewOcc"}},
-        {ConfigMapperResult::HintStatus::Derivative, {"NewScel"}}};
+const std::multimap<ConfigComparison, std::vector<std::string> >
+    traits<ConfigComparison>::strval = {
+        {ConfigComparison::None, {"None"}},
+        {ConfigComparison::Derivative, {"Derivative"}},
+        {ConfigComparison::Equivalent, {"Equivalent"}},
+        {ConfigComparison::Identical, {"Identical"}},
+        {ConfigComparison::Derivative, {"NewOcc"}},
+        {ConfigComparison::Derivative, {"NewScel"}}};
 
 }  // namespace CASM

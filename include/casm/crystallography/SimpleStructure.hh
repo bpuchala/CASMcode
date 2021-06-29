@@ -26,9 +26,10 @@ enum class SpeciesMode { ATOM, MOL };
 
 /// \brief Representation of a crystal of molecular and/or atomic occupants,
 /// and any additional properties.
-/// It does not require a primitive Structure or BasicStructure object to act
-/// as a reference and can be thought of as the class that embodies all the
-/// information of a config.json or properties.calc.json file
+///
+/// SimpleStructure does not require a primitive Structure or BasicStructure
+/// object to act as a reference. It can be written to or read from a
+/// "structure.json" or "properties.calc.json" file.
 class SimpleStructure {
  public:
   using SpeciesMode = SimpleStructureTools::SpeciesMode;
@@ -57,6 +58,9 @@ class SimpleStructure {
     /// \brief map of [property name, (m x names.size()) matrix] for all
     /// numerical site properties properties are assumed to be vectors of some
     /// property-specific dimension 'm'
+    ///
+    /// Properties are expected to be expressed in the \link DoFSet "standard
+    /// basis"\endlink.
     std::map<std::string, Eigen::MatrixXd> properties;
 
     /// \brief permutation that results in sites sorted alphabetically by
@@ -114,6 +118,12 @@ class SimpleStructure {
 
   Info atom_info;
 
+  /// \brief map of [property name, (m x 1) matrix] for all
+  /// numerical global properties properties are assumed to be vectors of some
+  /// property-specific dimension 'm'
+  ///
+  /// Properties are expected to be expressed in the \link DoFSet "standard
+  /// basis"\endlink.
   std::map<std::string, Eigen::MatrixXd> properties;
 };
 

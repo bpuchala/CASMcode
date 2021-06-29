@@ -101,8 +101,8 @@ class SymOp;
 /// - The values of the continuous global DoF ("global_dofs",
 ///   std::map<DoFKey, GlobalContinuousConfigDoFValues>).
 ///
-///   Example: GLstrain values, with prim DoF basis equal to the standard basis,
-///   accessed via `Eigen::VectorXd const
+///   Example: GLstrain values, with prim DoF basis equal to the \link
+///   xtal::DoFSet "standard basis"\endlink, accessed via `Eigen::VectorXd const
 ///   &ConfigDoF::global_dofs("GLstrain").values()`:
 ///
 ///       [e_xx, e_yy, e_zz, sqrt(2)*e_yz, sqrt(2)*e_xz, sqrt(2)*e_xy]

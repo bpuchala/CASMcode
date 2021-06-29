@@ -48,8 +48,8 @@ namespace CASM {
 /// information (such as how to input / output DoF, how to convert between
 /// Configuration, xtal::SimpleStructure, and BasicStructure, and how to build
 /// and evaluate Clexulators) via a derived implementation of DoFType::Traits
-/// (i.e. OccupationDoFTraits, DisplacementDoFTraits, StrainDoFTraits, etc.)
-/// which in turn contain an AnisoValTraits.
+/// (i.e. DoF_impl::OccupationDoFTraits, DoF_impl::DisplacementDoFTraits,
+/// DoF_impl::StrainDoFTraits, etc.) which in turn contain an AnisoValTraits.
 ///
 /// The AnisoValTraits class contains two constructors. One constructor allows
 /// defining a new property type which gets placed in a single static
@@ -223,8 +223,7 @@ AnisoValTraits::AnisoValTraits(std::string const &_name) {
 /// unless `this->is_default()==true`.
 ///
 /// @param _name Name for this type
-/// @param _std_var_names Names for standard coordinate axes of continuous
-///     variable space.
+/// @param _std_var_names Names for each of the standard basis coordinate axes.
 /// @param _options Bitflag describing setting properties (LOCAL, GLOBAL,
 ///     UNIT_LENGTH, DESCRIBES_ORIENTATION, EXTENSIVE)
 /// @param _symrep_builder Method for constructing symmetry representations
@@ -236,7 +235,8 @@ AnisoValTraits::AnisoValTraits(std::string const &_name) {
 /// @param _must_apply_after When used as a DoF, this is a set of DoFs (by
 ///     AnisoValTraits name) that must be applied after this DoF is applied
 ///     when constructing a SimpleStructure from a Configuration.
-/// @param _variable_descriptions Expanded description of each standard_var_name
+/// @param _variable_descriptions Expanded descriptions for each of the
+///     standard basis coordinate axes named by _std_var_names.
 /// @param _default True if this has 'default' designation, meaning it can be
 ///     overridden
 ///

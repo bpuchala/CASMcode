@@ -41,6 +41,7 @@ namespace StrucMapping {
 // - Document more explicitly the conversion of std::set<MappingNode> results
 // to SymOpVector
 // - Document use of k=0 mapping
+// - Consider 'isometry' vs 'rigid_rotation' etc.
 
 /// Lattice filter function for structure mapping
 ///
@@ -105,43 +106,51 @@ double atomic_cost(
 
 }  // namespace StrucMapping
 
-/// \brief Class describing the lattice-mapping portion of a particular mapping
+/// \brief Data structure describing a lattice mapping relationship
 struct LatticeNode {  // Note: See full description in StrucMapping.cc
 
-  /// This is V^{N}, the stretch matrix, a symmetric matrix that describes the
-  /// deformation that maps a de-rotated child superlattice to a parent
-  /// superlattice.
+  /// \brief The stretch matrix
+  ///
+  /// This is \f$V^{N}\f$, the stretch matrix, a symmetric matrix that
+  /// describes the deformation that maps a de-rotated child superlattice to a
+  /// parent superlattice.
   Eigen::Matrix3d stretch;
 
-  /// This is Q^{N}, the isometry matrix, which describes a rigid
+  /// \brief The isometry (rigid transformation) matrix
+  ///
+  /// This is \f$Q^{N}\f$, the isometry matrix, which describes a rigid
   /// transformation that de-rotates (de-reflects, etc.) a superlattice of
-  /// child. A property of Q^{N} is that (Q^{N}).inverse()  ==
-  /// (Q^{N}).transpose().
+  /// child. A property of \f$Q^{N}\f$ is that \f$(Q^{N})^{-1} ==
+  /// (Q^{N})^{T}\f$.
   Eigen::Matrix3d isometry;
 
-  /// This encodes the parent lattice (L1) and superlattice of parent that the
-  /// child is mapped to (L1 * T1 * N), according to:
+  /// \brief A superlattice of the parent (reference) structure
   ///
-  ///     parent.prim_lattice().lat_column_mat() == L1
-  ///     parent.superlattice().lat_column_mat() == L1 * T1 * N
+  /// This encodes the parent lattice (\f$L_1\f$) and superlattice of parent
+  /// that the child is mapped to (\f$L_1 * T_1 * N\f$). Specifically:
+  /// - \f$L_1\f$ = `parent.prim_lattice().lat_column_mat()`
+  /// - \f$L_1 * T_1 * N\f$ = `parent.superlattice().lat_column_mat()`
   ///
   Superlattice parent;
 
-  /// This encodes the mapped child lattice (V^{N} * Q^{N} * L2) and the mapped
-  /// child superlattice (V^{N} * Q^{N} * L2 * T2), according to:
+  /// \brief A superlattice of the mapped and un-deformed child structure
   ///
-  ///     child.prim_lattice().lat_column_mat() == V^{N} * Q^{N} * L2
-  ///     child.superlattice().lat_column_mat() == V^{N} * Q^{N} * L2 * T2
+  /// This encodes the mapped and un-deformed child lattice and the mapped and
+  /// un-deformed child superlattice. Specifically:
+  /// - \f$V^{N} * Q^{N} * L_2\f$ = `child.prim_lattice().lat_column_mat()`
+  /// - \f$V^{N} * Q^{N} * L_2 * T_2\f$ =
+  ///   `child.superlattice().lat_column_mat()`
   ///
   /// Note:
   /// - parent.superlattice() == child.superlattice()
-  /// - In many cases, such as when parent is a prim, T2 = I.
+  /// - When the parent lattice is the lattice of the primitive structure, then
+  ///   it will be the case that \f$T_2 = I\f$.
   Superlattice child;
 
-  /// The lattice deformation cost for this lattice mapping
+  /// \brief The lattice deformation cost for this lattice mapping
   double cost;
 
-  /// Holds the name of the method used to calculate the lattice deformation
+  /// \brief The name of the method used to calculate the lattice deformation
   /// cost
   std::string cost_method;
 
@@ -152,28 +161,18 @@ struct LatticeNode {  // Note: See full description in StrucMapping.cc
   // TODO: We should prefer putting the logic of how LatticeNode members are
   // calculated in standalone methods rather than constructors...
 
-  /// \brief Construct with ideal parent_scel and deformed child_scel, which are
-  /// related by a deformation tensor [deprecated]
-  /// @param parent_scel and @param child_scel are integer combinations of the
-  /// primitive cells 'parent_prim' and 'child_prim', respectively
-  /// @param child_N_atom is number of sites in the child
-  /// \param _cost is used to specify mapping cost (in default case -- big_inf()
-  /// -- cost will be calculated from scratch)
-  ///
-  /// Note: This method is deprecated. Prefer using `make_lattice_node`.
+  /// \brief Construct a LatticeNode by calculating the deformation tensor that
+  /// maps a particular child superlattice to a particular parent superlattice
+  /// [deprecated]
   LatticeNode(Lattice const &parent_prim, Lattice const &parent_scel,
-              Lattice const &child_prim, Lattice const &child_scel,
-              Index child_N_atom, double _cost = StrucMapping::big_inf());
+              Lattice const &unmapped_child_prim,
+              Lattice const &unmapped_child_scel, Index child_N_atom,
+              double _cost = StrucMapping::big_inf());
 
-  /// \brief Construct with LatticeMap, which relates a supercell of parent_prim
-  /// to a supercell of child_prim [deprecated]
-  /// @param lat_map specifies a supercell that is a supercell of parent_prim,
-  /// but also an idealized supercell of child_prim
-  /// @param child_N_atom is number of sites in the child
-  ///
-  /// Note: This method is deprecated. Prefer using `make_lattice_node`.
-  LatticeNode(LatticeMap const &_lat_map, Lattice const &parent_prim,
-              Lattice const &child_prim);
+  /// \brief Construct a LatticeNode using the mapping calculated by LatticeMap
+  /// [deprecated]
+  LatticeNode(LatticeMap const &lattice_map, Lattice const &parent_prim,
+              Lattice const &unmapped_child_prim);
 };
 
 /// \brief Construct a LatticeNode by calculating the deformation tensor that
@@ -292,7 +291,8 @@ struct AssignmentNode {
 bool identical(AssignmentNode const &A, AssignmentNode const &B);
 
 /// \brief Data structure holding a mapping between structures
-struct MappingNode {
+struct MappingNode {  // Note: See full description in StrucMapping.cc
+
   // typedefs to provide flexibility if we eventually change to a
   // Eigen::Matrix<3,Eigen::Dynamic>
   typedef Eigen::MatrixXd DisplacementMatrix;
@@ -330,7 +330,7 @@ struct MappingNode {
   /// atomic_node.cost
   double cost;
 
-  /// Method used to calculate the total finalized cost
+  /// \brief Method used to calculate the total finalized cost
   std::string cost_method;
 
   /// \brief 3xN matrix of displacements for all sites in parent supercell (Va

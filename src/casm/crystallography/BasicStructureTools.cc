@@ -313,6 +313,8 @@ BasicStructure make_primitive(const BasicStructure &non_primitive_struc,
     }
   }
 
+  primitive_struc.set_global_dofs(non_primitive_struc.global_dofs());
+
   // TODO: Do we want this?
   primitive_struc.set_title(non_primitive_struc.title());
   return primitive_struc;

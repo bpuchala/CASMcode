@@ -187,12 +187,13 @@ class AnisoValTraits {  // Note: full class documentation in AnisoValTraits.cc
   /// Allow implicit conversion to std::string (name)
   operator std::string const &() const { return name(); }
 
-  /// Return standard coordinate axes for continuous variable space
+  /// Names for each of the standard basis coordinate axes
   std::vector<std::string> const &standard_var_names() const {
     return m_standard_var_names;
   }
 
-  /// Returns expanded description of each standard_var_name
+  /// \brief Expanded descriptions for each of the standard basis coordinate
+  /// axes named by standard_var_names
   std::vector<std::string> const &variable_descriptions() const {
     return m_variable_descriptions;
   }
