@@ -158,8 +158,26 @@ void Traits::to_json(DoFSet const &_out, jsonParser &_json) const {
 }
 
 //************************************************************
+
+/// \brief Transforms SimpleSructure @param _struc by applying DoF values
+/// contained in @param _dof in a type-specific way
 void Traits::apply_dof(ConfigDoF const &_dof, BasicStructure const &_reference,
                        SimpleStructure &_struc) const {
+  return;
+}
+
+/// \brief Transforms SimpleSructure @param _struc by applying DoF or
+/// property values of this type
+///
+/// Default uses `this->val_traits().global()` to set global or mol_info
+/// properties.
+void Traits::apply_standard_values(Eigen::MatrixXd const &standard_values,
+                                   SimpleStructure &_struc) const {
+  if (this->val_traits().global()) {
+    _struc.properties[name()] = standard_values;
+  } else {
+    _struc.mol_info.properties[name()] = standard_values;
+  }
   return;
 }
 

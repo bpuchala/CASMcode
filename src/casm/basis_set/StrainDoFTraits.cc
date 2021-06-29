@@ -71,7 +71,14 @@ std::vector<BasisSet> StrainDoFTraits::construct_site_bases(
 void StrainDoFTraits::apply_dof(ConfigDoF const &_dof,
                                 BasicStructure const &_reference,
                                 SimpleStructure &_struc) const {
-  Eigen::VectorXd unrolled_metric = _dof.global_dof(name()).standard_values();
+  this->apply_standard_values(_dof.global_dof(name()).standard_values(),
+                              _struc);
+}
+
+/// \brief Apply DoF or property values to _struc
+void StrainDoFTraits::apply_standard_values(
+    Eigen::MatrixXd const &standard_values, SimpleStructure &_struc) const {
+  Eigen::VectorXd const &unrolled_metric = standard_values;
   StrainConverter c(m_metric);
   Eigen::Matrix3d F = c.unrolled_strain_metric_to_F(unrolled_metric);
 

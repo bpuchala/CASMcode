@@ -27,10 +27,13 @@ class StrainDoFTraits : public DoFType::Traits {
   jsonParser dof_to_json(ConfigDoF const &_dof,
                          BasicStructure const &_reference) const override;
 
-  /// \brief Transforms SimpleSructure @param _struc by applying strain DoF
-  /// values contained in @param _dof
+  /// \brief Apply DoF values for this DoF to _struc
   void apply_dof(ConfigDoF const &_dof, BasicStructure const &_reference,
                  SimpleStructure &_struc) const override;
+
+  /// \brief Apply DoF or property values to _struc
+  void apply_standard_values(Eigen::MatrixXd const &standard_values,
+                             SimpleStructure &_struc) const override;
 
  protected:
   DoFType::Traits *_clone() const override {

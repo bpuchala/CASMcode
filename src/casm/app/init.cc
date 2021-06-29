@@ -539,8 +539,17 @@ int init_command(const CommandArgs &args) {
           SimpleStructure::SpeciesMode::ATOM;
       if (vm.count(molecule_opt))
         species_mode = SimpleStructure::SpeciesMode::MOL;
-      SimpleStructure sstruc =
-          make_simple_structure(config, {}, vm.count(relaxed_opt));
+      SimpleStructure sstruc;
+      if (vm.count(relaxed_opt)) {
+        if (!is_calculated(config)) {
+          err_log() << "Error using --relaxed: configuration " << config.name()
+                    << " is not calculated." << std::endl;
+          return ERR_INVALID_ARG;
+        }
+        sstruc = make_simple_structure(config, config.calc_properties());
+      } else {
+        sstruc = make_simple_structure(config);
+      }
       BasicStructure new_prim =
           xtal::make_basic_structure(sstruc, init_opt.dof_strs(), species_mode);
       fs::path config_dir = primclex.dir().configuration_dir(config.name());

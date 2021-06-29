@@ -99,6 +99,11 @@ class Traits {  // Note: full class documentation in DoFTraits.cc
                          BasicStructure const &_reference,
                          SimpleStructure &_struc) const;
 
+  /// \brief Transforms SimpleSructure @param _struc by applying DoF or
+  /// property values of this type
+  virtual void apply_standard_values(Eigen::MatrixXd const &standard_values,
+                                     SimpleStructure &_struc) const;
+
   /// \brief Serialize type-specific DoF values from ConfigDoF
   virtual jsonParser dof_to_json(ConfigDoF const &_dof,
                                  BasicStructure const &_reference) const;

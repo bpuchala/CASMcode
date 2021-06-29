@@ -69,17 +69,11 @@ std::set<std::string> make_dof_managed_properties(
 
   for (auto const &dof_key : xtal::global_dof_types(prim)) {
     auto val = DoFType::traits(dof_key).find_values(child.properties);
-
-    // TODO: what case would require multiple property names? currently
-    // only one is ever returned
     dof_managed_properties.insert(val.second.begin(), val.second.end());
   }
 
   for (auto const &dof_key : xtal::continuous_local_dof_types(prim)) {
     auto val = DoFType::traits(dof_key).find_values(child.mol_info.properties);
-
-    // TODO: what case would require multiple property names? currently
-    // only one is ever returned
     dof_managed_properties.insert(val.second.begin(), val.second.end());
   }
 
@@ -107,17 +101,12 @@ Eigen::MatrixXd as_column_major_matrix(Eigen::VectorXd vector, int rows,
 /// properties are DoF and which are MappedProperties
 ///
 /// Notes:
+/// - DoFTraits, specifically the DoFType::traits(dof_key).find_values methods,
+/// are used to determine which global and mol_info "mapped_structure"
+/// properties are represented by DoF, and the rest are copied into the
+/// `global` and `site` members of the resulting MappedProperties object.
 /// - Property names in "mapped_structure" must follow CASM property naming
 /// conventions as documented for AnisoValTraits.
-/// - If "disp" is a property of mapped_structure (i.e. it is in
-/// `simple_structure.mol_info.properties`), rather than a DoF, then store
-/// store the mol_info coordinates using:
-///     result.site["coordinate"] = mapped_structure.mol_info.coords;
-/// - If "*strain" is a global property (i.e. "*strain" is in
-/// `mapped_structure.properties`), rather than a DoF, we will also store the
-/// lattice vectors using:
-///     result.global["latvec"] = mapped_structure.lat_column_mat;
-/// - This only sets the `site` and `global` members of MappedProperties
 ///
 MappedProperties make_mapped_properties(
     xtal::SimpleStructure const &mapped_structure,
@@ -129,23 +118,12 @@ MappedProperties make_mapped_properties(
   for (auto const &prop : mapped_structure.properties) {
     if (!dof_managed_properties.count(prop.first)) {
       result.global[prop.first] = prop.second;
-      // If "*strain" is a property, rather than a DoF, we will also store the
-      // lattice
-      if (prop.first.find("strain") != std::string::npos) {
-        result.global["latvec"] =
-            as_column_major_vector(mapped_structure.lat_column_mat);
-      }
     }
   }
 
   for (auto const &prop : mapped_structure.mol_info.properties) {
     if (!dof_managed_properties.count(prop.first)) {
       result.site[prop.first] = prop.second;
-      // If "disp" is a property, rather than a DoF, we will also store the
-      // coordinates
-      if (prop.first == "disp") {
-        result.site["coordinate"] = mapped_structure.mol_info.coords;
-      }
     }
   }
 

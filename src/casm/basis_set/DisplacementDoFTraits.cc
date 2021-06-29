@@ -47,11 +47,20 @@ std::vector<BasisSet> DisplacementDoFTraits::construct_site_bases(
   return result;
 }
 
-//  Apply DoF values for this DoF to _struc
+/// \brief Apply DoF values for this DoF to _struc
 void DisplacementDoFTraits::apply_dof(ConfigDoF const &_dof,
                                       BasicStructure const &_reference,
                                       SimpleStructure &_struc) const {
-  _struc.mol_info.coords += _dof.local_dof(name()).standard_values();
+  this->apply_standard_values(_dof.local_dof(name()).standard_values(), _struc);
+
+  // Any considerations here for Selective Dynamics?
+}
+
+/// \brief Apply DoF or property values to _struc
+void DisplacementDoFTraits::apply_standard_values(
+    Eigen::MatrixXd const &standard_values, SimpleStructure &_struc) const {
+  _struc.mol_info.coords += standard_values;
+
   // Any considerations here for Selective Dynamics?
 }
 

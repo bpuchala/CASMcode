@@ -13,6 +13,10 @@ class DisplacementDoFTraits : public DoFType::Traits {
   void apply_dof(ConfigDoF const &_dof, BasicStructure const &_reference,
                  SimpleStructure &_struc) const override;
 
+  /// \brief Apply DoF or property values to _struc
+  void apply_standard_values(Eigen::MatrixXd const &standard_values,
+                             SimpleStructure &_struc) const override;
+
   std::vector<BasisSet> construct_site_bases(
       Structure const &_prim,
       std::vector<Orbit<PrimPeriodicSymCompare<IntegralCluster> > > &_asym_unit,
