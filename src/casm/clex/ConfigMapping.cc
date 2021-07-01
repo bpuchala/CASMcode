@@ -218,7 +218,7 @@ namespace CASM {
 /// - \f$N\f$: A unimodular matrix, generates non-identical but equivalent
 ///   parent superlattices, to be determined
 /// - \f$L_2\f$: The unmapped child structure's lattice vectors, as a column
-///   vector matrix. It is qual to
+///   vector matrix. It is equal to
 ///
 ///       unmapped_child.lat_column_mat \endcode
 ///
@@ -269,9 +269,14 @@ namespace CASM {
 ///
 ///       mapped_properties.mol_info.properties["disp"].col(i)
 ///
+/// - \f$\vec{r_2}(i)\f$: the Cartesian coordinate of the i-th site in the
+/// child structure. It is equal to:
+///
+///       unmapped_child.atom_info.coords.col(i)
+///
 /// - \f$p_i\f$: A permutation vector, describes which atom in the unmapped
-/// structure (\f$p_i\f$) is mapped to the i-th site of the mapped structure.
-///   Values \f$p_i\f$ greater than the number of atoms in the unmapped
+///   structure (\f$p_i\f$) is mapped to the i-th site of the mapped structure.
+///   Values of \f$p_i\f$ greater than the number of atoms in the unmapped
 ///   structure indicate inferred vacancies. It is equal to:
 ///
 ///       mapping.atom_permutation
@@ -310,8 +315,8 @@ namespace CASM {
 ///
 ///       mapped_properties.global[property_name]
 ///
-/// - \f$M\f$: Symmetry matrix representation for the mapping transformation. It
-///   is equal to
+/// - \f$M\f$: Matrix representation for the mapping transformation. It is
+///   equal to
 ///
 ///       Eigen::MatrixXd M = AnisoValTraits(property_name).symop_to_matrix(
 ///           mapping.lattice_node.isometry,
@@ -342,8 +347,8 @@ namespace CASM {
 ///
 ///       mapped_child.mol_info.properties[property_name].col(i)
 ///
-/// - \f$M\f$: Symmetry matrix representation for the mapping transformation. It
-/// is equal to
+/// - \f$M\f$: Matrix representation for the mapping transformation. It is
+/// equal to
 ///
 ///       Eigen::MatrixXd M = AnisoValTraits(property_name).symop_to_matrix(
 ///           mapping.lattice_node.isometry,
@@ -398,8 +403,8 @@ namespace CASM {
 /// 4. fix_lattice_volume_range = true: Force lattice mapping solutions of the
 ///     form \f$L_1 * T_1 * N = V * Q * L_2\f$, where
 ///
-///     this->min_lattice_volume <=
-///         (L_1 * T_1 * N).determinant() <= this->max_lattice_volume,
+///         this->min_lattice_volume <=
+///             (L_1 * T_1 * N).determinant() <= this->max_lattice_volume,
 ///
 ///   - \f$L_1\f$ = the prim lattice, as a column vector matrix
 ///   - \f$L_2\f$ = `child.lat_column_mat`, the unmapped child structure's
@@ -759,8 +764,8 @@ ConfigMapper::ConfigMapper(std::shared_ptr<Structure const> const &_shared_prim,
               *shared_prim(), adapter::Adapter<xtal::SymOpVector, SymGroup>()(
                                   shared_prim()->factor_group())),
           _settings.lattice_weight, _settings.max_volume_change,
-          _settings.options(), _settings.cost_tol, _settings.min_va_frac,
-          _settings.max_va_frac),
+          _settings.robust, _settings.soft_va_limit, _settings.cost_tol,
+          _settings.min_va_frac, _settings.max_va_frac),
       m_settings(_settings) {
   if (settings().filter) {
     m_struc_mapper.set_filter(settings().filter);
@@ -789,8 +794,8 @@ ConfigMapperResult ConfigMapper::import_structure(
                 hint_ptr->point_group(),
                 hint_ptr->supercell().sym_info().supercell_lattice()),
             SimpleStructure::SpeciesMode::ATOM),
-        struc_mapper().lattice_weight(), 0., struc_mapper().options(),
-        struc_mapper().cost_tol());
+        struc_mapper().lattice_weight(), 0., struc_mapper().robust(),
+        struc_mapper().soft_va_limit(), struc_mapper().cost_tol());
 
     auto config_maps = tmapper.map_deformed_struc_impose_lattice_node(
         child_struc,

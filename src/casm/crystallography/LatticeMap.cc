@@ -128,74 +128,222 @@ double StrainCostCalculator::strain_cost(
 /// \class LatticeMap
 /// \brief LatticeMap finds optimal mappings between lattices
 ///
-/// Note: this documentation uses the notation and conventions from the paper
-/// `Comparing crystal structures with symmetry and geometry`,
-/// by John C Thomas, Anirudh Raju Natarajan, Anton Van der Ven
+/// Note: This documentation uses the notation and conventions from the paper
+/// "Comparing crystal structures with symmetry and geometry",
+/// by John C. Thomas, Anirudh Raju Natarajan, Anton Van der Ven.
 ///
 /// Goal:
-/// - Find mapping solutions, (N, F^{N}), between lattices (L1 * T1) (parent)
-///   and L2 (child), of the form
-///       (L1 * T1) * N = F^{N} * L2,
-///   that minimize a strain cost, strain_cost(F^{N}).
+/// - Find lattice mapping solutions, \f$(N, F^{N})\f$, that minimize a
+///   cost, \f$\mathrm{cost}(F^{N})\f$, of straining a "child" lattice
+///   (\f$L_2\f$) to a reference "parent" lattice (\f$L_1 * T_1\f$)
+///   according to:
+///   \f[
+///       L_1 * T_1 * N = F^{N} * L_2.
+///   \f]
+///
+/// \note Within the context of LatticeMap, \f$L_1\f$ and \f$T_1\f$ are
+///   never separated and the LatticeMap documentation could be written using
+///   only \f$L_1\f$ for the parent lattice. In practice, LatticeMap is used by
+///   the structure mapping algorithms implemented by StrucMapper which choose
+///   or search for \f$T_1\f$ in order to map a child lattice to a superlattice
+///   of the parent lattice. The LatticeMap documentation is written using
+///   \f$(L_1 * T_1)\f$ for the parent lattice to be clearer within the
+///   context of the StrucMapper documentation.
 ///
 /// Variables:
-/// - parent (L1 * T1), child (L2) (Eigen::Matrix3d): the lattices to be
-///   mapped, represented as 3x3 matrices whose columns are the lattice vectors
-/// - N (Eigen::Matrix3d): a unimodular matrix (integer valued, though
-///   represented with a floating point matrix for multiplication, with
-///   N.determinant()==1) that generates lattice vectors (L1 * T1 * N) for
-///   lattices that are equivalent to the parent lattice (L1 * T1).
-/// - F^{N} (Eigen::Matrixd): a deformation gradient,
-///        (L1 * T1) * N == F^{N} * L2,
-///   from child lattice vectors, L2, to lattice vectors (L1 * T1 * N).
+/// - \f$(L_1 * T_1)\f$: the reference parent lattice to be
+///   mapped to, represented as a 3x3 matrix whose columns are the lattice
+///   vectors.
+/// - \f$L_2\f$: the child lattice to be mapped, represented
+///   as a 3x3 matrix whose columns are the lattice vectors
+/// - \f$N\f$: a unimodular matrix (integer valued, with \f$\det{N}=1\f$,
+///   though represented with a floating point matrix for multiplication
+///   purposes) that generates lattice vectors \f$(L_1 * T_1 * N)\f$ of
+///   lattices that are equivalent to the input parent lattice \f$(L_1 *
+///   T_1)\f$. Elsewhere, the superscript \f$N\f$ is used to indicate values
+///   that depend on the choice of \f$N\f$.
+/// - \f$F^{N}\f$: the deformation gradient of mapping from the child lattice
+///   vectors to the parent lattice vectors.
 ///
-/// Some relations:
-///   The deformation gradient can be decomposed into a stretch tensor and
-///   isometry,
-///       F^{N} == V^{N} * Q^{N}.
-///   It can also be defined in the reverse direction (parent -> child),
-///       F_reverse^{N} * (L1 * T1) * N == L2,
-///   and decomposed into the reverse stretch tensor and isometry
-///       F_reverse^{N} = V_reverse^{N} * Q_reverse^{N},
-///   Which are related via:
-///       V_reverse^{N} == (V^{N}).inverse()
-///       Q_reverse^{N} == (Q^{N}).inverse() == (Q^{N}).transpose()
-///   The Biot strain tensor, B^{N}, and reverse:
-///       B^{N} = V^{N} - I
-///       B_reverse^{N} = V_reverse^{N} - I
 ///
-/// Strain cost:
-/// - 'isotropic_strain_cost': (default, used if
-///  `_symmetrize_strain_cost==false`) a volume-normalized strain cost,
-///   calculated to be invariant to which structure is the child/parent. The
-///  `\tilde` indicates that the value is normalized to be volume invariant.
+/// ### Example: Construction, mapping to a BasicStructure ###
 ///
-///       \tilde{V} = \frac{1}{\det{V}^{1/3}} V
+/// When mapping to a BasicStructure, the crystal point group should be used:
+/// \code
+/// // parent, use crystal point group
+/// xtal::BasicStructure parent = ...;
+/// double tol = TOL;
+/// std::vector<xtal::SymOp> parent_factor_group =
+///     xtal::make_factor_group(parent, tol);
+/// std::vector<xtal::SymOp> parent_crystal_point_group =
+///     xtal::make_crystal_point_group(parent_factor_group, tol);
+///
+/// // child, use identity_group
+/// xtal::SimpleStructure unmapped_child = ...;
+/// std::vector<xtal::SymOp> child_point_group = xtal::identity_group();
+///
+/// // range of elements of N matrix (controls number of potential mappings to
+/// // be considered... larger is more, typically 1 is sufficient)
+/// int unimodular_element_range = 1;
+///
+/// double max_lattice_cost = 1e20;
+///
+/// // Use isotropic_strain_cost
+/// bool use_symmetry_breaking_strain_cost = false;
+///
+/// xtal::LatticeMap lattice_map{parent.lattice(),
+///                              Lattice(unmapped_child.lat_column_mat)
+///                              unimodular_element_range,
+///                              parent_crystal_point_group,
+///                              child_point_group,
+///                              max_lattice_cost,
+///                              use_symmetry_breaking_strain_cost};
+/// \endcode
+///
+/// ### Example: Construction, mapping lattices without a basis ###
+///
+/// When mapping lattices without a basis, the lattice point groups should be
+/// used:
+/// \code
+/// // parent, use lattice point group
+/// Eigen::Matrix3d L1;
+/// L1 << 3.233986860000, -1.616993430000, 0.000000000000,
+///     0.000000000000, 2.800714770000, 0.000000000000,
+///     0.000000000000, 0.000000000000, 10.337356680000;
+///
+/// xtal::Lattice L1_lattice(L1);
+/// auto L1_point_group = xtal::make_point_group(L1_lattice);
+///
+/// // child, use lattice point group
+/// Eigen::Matrix3d L2;
+/// L2 << 3.269930775653, 0.000000000000, 0.000000000000,  //
+///     -1.634965387827, 2.831843113861, 0.000000000000,   //
+///     0.000000000000, 0.000000000000, 10.464806115486;   //
+///
+/// xtal::Lattice L2_lattice(L2);
+/// auto L2_point_group = xtal::make_point_group(L2_lattice);
+///
+/// // range of elements of N matrix (controls number of potential mappings to
+/// // be considered... larger is more, typically 1 is sufficient)
+/// int unimodular_element_range = 1;
+///
+/// double max_lattice_cost = 1e20;
+///
+/// // Use isotropic_strain_cost
+/// bool use_symmetry_breaking_strain_cost = false;
+///
+/// xtal::LatticeMap lattice_map{L1_lattice,
+///                              L2_lattice,
+///                              unimodular_element_range,
+///                              L1_point_group,
+///                              L2_point_group,
+///                              max_lattice_cost,
+///                              use_symmetry_breaking_strain_cost};
+/// \endcode
+///
+/// ### Example: Find the optimal mapping ###
+///
+/// Use LatticeMap::best_strain_mapping to find the optimal mapping according
+/// to the chosen cost method.
+/// \code
+/// // find optimal mapping
+/// lattice_map.best_strain_mapping();
+///
+/// // print solution
+/// std::cout << "N: \n" << lattice_map.matrixN() << std::endl;
+/// std::cout << "F^{N}: \n" << lattice_map.deformation_gradient() << std::endl;
+/// std::cout << "cost method: \n" << lattice_map.cost_method() << std::endl;
+/// std::cout << "cost: \n" << lattice_map.strain_cost() << std::endl;
+/// \endcode
+///
+/// ### Example: Find sub-optimal mappings ###
+///
+/// Find all mappings with cost better than some `max_cost` by using
+/// LatticeMap::next_mapping_better_than:
+/// \code
+/// double max_cost = 0.4;
+/// std::vector<Eigen::Matrix3d> N;
+/// std::vector<Eigen::Matrix3d> F;
+/// std::vector<double> cost;
+/// while (lattice_map.next_mapping_better_than(max_cost)) {
+///   N.push_back(lattice_map.matrixN());
+///   F.push_back(lattice_map.deformation_gradient());
+///   cost.push_back(lattice_map.strain_cost());
+/// }
+/// \endcode
+///
+/// ### Some useful relations and definitions ###
+///
+/// The deformation gradient can be decomposed into a stretch tensor (\f$V\f$,
+/// the "left stretch tensor", or \f$U\f$ the "right stretch tensor") and an
+/// isometry (distance-preserving transformation) matrix (\f$Q\f$),
+/// \f[
+///     F^{N} = V^{N} * Q^{N} = Q^{N} * U^{N}.
+/// \f]
+/// It can also be defined in the reverse direction (parent to child
+/// deformation),
+/// \f[
+///     F_{reverse}^{N} * (L_1 * T_1) * N = L_2,
+/// \f]
+/// and decomposed into the reverse stretch tensor and isometry matrices
+/// \f[
+///     F_{reverse}^{N} = V_{reverse}^{N} * Q_{reverse}^{N} = Q_{reverse}^N *
+///         U_{reverse}^N.
+/// \f]
+/// There are related via:
+/// \f[
+///     U_{reverse}^{N} = (V^{N})^{-1} \\
+///     U^{N} = (V_{reverse}^{N})^{-1} \\
+///     Q_{reverse}^{N} = (Q^{N})^{-1} = (Q^{N})^{\top}
+/// \f]
+/// The Biot strain tensor, \f$B^{N}\f$, and reverse are defined:
+/// \f[
+///     B^{N} = V^{N} - I \\
+///     B_{reverse}^{N} = V_{reverse}^{N} - I
+/// \f]
+///
+///
+/// ### Strain cost ###
+///
+/// The strain cost may be calculated using one of:
+/// - `"isotropic_strain_cost"`: (default, used if constructed with
+///  `_symmetrize_strain_cost==false`, calculated by isotropic_strain_cost) a
+///  volume-normalized strain cost, calculated to be invariant to which
+///  structure is the child/parent. The use of \f$\tilde{}\f$ indicates that
+///  the value is normalized to be volume invariant.
+///  \f[
+///       \mathrm{isotropic\ strain\ cost} = \frac{1}{2}*\left(
+///           \frac{1}{3}*\mathrm{tr}\left(\tilde{B}^{2} \right) +
+///           \frac{1}{3}*\mathrm{tr}\left(\tilde{B}_{reverse}^{2} \right)
+///       \right) \\
+///       \tilde{V} = \frac{1}{\det{V}^{1/3}} V \\
 ///       \tilde{B} = \tilde{V} - I
-///
-///   For reverse cost, use V.inverse() = U_reverse
-///       \tilde{U_reverse} = \frac{1}{\det{U_reverse}^{1/3}} U_reverse
-///       \tilde{B_reverse} = \tilde{U_reverse} - I
-///
-///       strain_cost = (1./2.)*(
-///           (1./3.)*\tr{\tilde{B}^{2}} +
-///           (1./3.)*\tr{\tilde{B_reverse}^{2}})
-///
-/// - 'symmetry_breaking_strain_cost': (used if
-///   `_symmetrize_strain_cost==true`) a strain cost, calculated with only the
+///  \f]
+///   For reverse cost, use \f$V^{-1} = U_{reverse}\f$:
+///  \f[
+///       \tilde{U}_{reverse} = \frac{1}{\det{U_{reverse}}^{1/3}} U_{reverse} \\
+///       \tilde{B}_{reverse} = \tilde{U}_{reverse} - I
+///  \f]
+/// - `"symmetry_breaking_strain_cost"`: (used if constructed with
+///   `_symmetrize_strain_cost==true`, calculated by
+///   symmetry_breaking_strain_cost) a strain cost, calculated with only the
 ///   the components of the strain that break the symmetry of the parent
 ///   structure.
+///  \f[
+///       \mathrm{symmetry\ breaking\ strain\ cost} =
+///           \frac{1}{2}*\left(
+///               \frac{1}{3}*\mathrm{tr}\left( B_{sym-break}^2 \right) +
+///               \frac{1}{2}*\mathrm{tr}\left( B_{sym-break-reverse}^2 \right)
+///           \right) \\
+///       B_{sym-break} = B - B_{sym} \\
+///       B_{sym} = \frac{1}{N_{G_1}} * \sum_i ( G_1(i) * B * G_1^{\top}(i) )
+///  \f]
+///   where \f$B_{sym-break}\f$, is the symmetry-breaking Biot strain,
+///   \f$G_1(i)\f$ are point group operations of the parent structure, and
+///   \f$N_{G_1}\f$ is the total number of operations. Similar relations hold
+///   for calculating \f$B_{sym-break-reverse}\f$ from \f$B_{reverse}\f$.
 ///
-///       symmetry_breaking_strain_cost =
-///           (1./2.)*(
-///               (1./3.)*trace( (B_sym_break)^2 ) +
-///               (1./3.)*trace( (B_sym_break_reverse)^2 ) )
-///
-///       B_sym_break = B - B_sym, the symmetry-breaking Biot strain
-///       B_sym = (1./N_G1) * sum_i ( G1_i * B * G1_i.transpose() ),
-///       where G1_i are point group operations of parent structure, N_G1 is
-///       the total number of operations,
-///       and similarly for B_sym_break_reverse from B_reverse.
+/// ### Implementation note: Use of reduced cells ###
 ///
 /// The search for minimum cost mappings is best done using the reduced cells
 /// of the parent and child lattices:
@@ -207,31 +355,31 @@ double StrainCostCalculator::strain_cost(
 ///     reduced_child == child * transformation_matrix_to_reduced_child,
 ///
 /// Then,
-///     reduced_parent * N_reduced == F_reduced^{N} * reduced_child
-///     parent * transformation_matrix_to_reduced_parent * N_reduced ==
-///         F_reduced^{N} * child * transformation_matrix_to_reduced_child
 ///
-/// Thus,
+///     reduced_parent * N_reduced == F_reduced * reduced_child
+///     parent * transformation_matrix_to_reduced_parent * N_reduced ==
+///         F_reduced * child * transformation_matrix_to_reduced_child
+///
+/// Finally, this gives:
+///
 ///     N == transformation_matrix_to_reduced_parent * N_reduced *
 ///         transformation_matrix_to_reduced_child.inverse(),
-///     F^{N} == F_reduced^{N}
-///
+///     F == F_reduced
 
-/// LatticeMap constructor
+/// \brief LatticeMap constructor
 ///
-/// \param _parent Reference lattice (L1 * T1)
-/// \param _child Lattice to be mapped to _parent (L2)
-/// \param num_atoms Unused. (TODO: remove)
-/// \param _range Determines range of N matrices to be searched when optimizing
-///     the lattice mapping. The absolute value of an element of N is not
-///     allowed be be greater than `_range`. Typically 1 is a good enough
+/// \param _parent Reference lattice (\f$L_1 * T_1\f$)
+/// \param _child Lattice to be mapped to _parent (\f$L_2\f$)
+/// \param _range Determines range of \f$N\f$ matrices to be searched when
+///     optimizing the lattice mapping. The absolute value of an element of N
+///     is not allowed be be greater than `_range`. Typically 1 is a good enough
 ///     choice.
 /// \param _parent_point_group Point group of the parent (i.e. crystal point
 ///     group), used to identify canonical N matrices and reduce the number of
 ///     operations. Also used to calculate the symmetry-breaking strain cost if
 ///     `_symmetrize_strain_cost==true`.
 /// \param _child_point_group Point group of the child (structure), used to
-///     identify canonical N matrices and reduce the number of operations.
+///     identify canonical \f$N\f$ matrices and reduce the number of operations.
 ///     (Typically, just use {SymOp::identity()})
 /// \param _init_better_than Initializes the LatticeMap to the first mapping
 ///     with a cost less than `_init_better_than + _cost_tol`. Use the default
@@ -250,6 +398,7 @@ LatticeMap::LatticeMap(const Lattice &_parent, const Lattice &_child,
       m_range(_range),
       m_symmetrize_strain_cost(_symmetrize_strain_cost),
       m_cost_tol(_cost_tol),
+      m_has_current_solution(false),
       m_cost(1e20),
       m_currmat(0) {
   Lattice reduced_parent = _parent.reduced_cell();
@@ -319,16 +468,6 @@ LatticeMap::LatticeMap(const Lattice &_parent, const Lattice &_child,
   _reset(_init_better_than);
 }
 
-LatticeMap::LatticeMap(Eigen::Ref<const LatticeMap::DMatType> const &_parent,
-                       Eigen::Ref<const LatticeMap::DMatType> const &_child,
-                       int _range, SymOpVector const &_parent_point_group,
-                       SymOpVector const &_child_point_group,
-                       double _init_better_than /* = 1e20 */,
-                       bool _symmetrize_strain_cost, double _cost_tol)
-    : LatticeMap(Lattice(_parent), Lattice(_child), _range, _parent_point_group,
-                 _child_point_group, _init_better_than, _symmetrize_strain_cost,
-                 _cost_tol) {}
-
 void LatticeMap::_reset(double _better_than) {
   m_currmat = 0;
 
@@ -341,6 +480,7 @@ void LatticeMap::_reset(double _better_than) {
 
   // Initialize to first valid mapping
   if (tcost <= _better_than && _check_canonical()) {
+    m_has_current_solution = true;
     m_cost = tcost;
     // reconstruct correct N for unreduced lattice
     m_N = m_transformation_matrix_to_reduced_parent *
@@ -368,6 +508,7 @@ const LatticeMap &LatticeMap::best_strain_mapping() const {
     best_cost = strain_cost();
   }
 
+  m_has_current_solution = true;
   m_cost = best_cost;
   return *this;
 }
@@ -375,7 +516,8 @@ const LatticeMap &LatticeMap::best_strain_mapping() const {
 /// Calculate the strain cost of a deformation
 ///
 /// \param deformation_gradient Parent to child deformation gradient,
-///    F_reverse^{N}, where F_reverse^{N} * (L1 * T1) * N = L2.
+///    \f$F_{reverse}^{N}\f$, where \f$F_{reverse}^{N} * (L_1 * T_1) * N =
+///    L_2\f$.
 ///
 double LatticeMap::_calc_strain_cost(
     const Eigen::Matrix3d &deformation_gradient) const {
@@ -399,23 +541,26 @@ std::string LatticeMap::cost_method() const {
   }
 }
 
-/// \brief Iterate until the next solution (N, F^{N}) with lattice mapping
-/// score less than `max_cost` is found.
+/// \brief Iterate until the next solution \f$(N, F^{N})\f$ with lattice
+/// mapping score less than `max_cost` is found.
 ///
 /// The current solution is:
-/// - F_reverse^{N} = this->deformation_cost()
-/// - N = this->matrixN()
+/// - \f$F_{reverse}^{N}\f$ = this->deformation_cost()
+/// - \f$N\f$ = this->matrixN()
 ///
-/// More solutions may be found as long as
-///     `this->strain_cost() < max_cost + this->cost_tol()`.
+/// The current solution exists if
+/// \code
+///     static_cast<bool>(*this) == true.
+/// \endcode
 /// Otherwise, iteration is complete.
 ///
 const LatticeMap &LatticeMap::next_mapping_better_than(double max_cost) const {
+  m_has_current_solution = false;
   m_cost = 1e20;
   return _next_mapping_better_than(max_cost);
 }
 
-/// \brief Iterate until the next solution (N, F^{N}) with lattice mapping
+/// \brief Iterate until the next solution \f$(N, F^{N})\f$ with lattice mapping
 /// score less than `max_cost` is found.
 const LatticeMap &LatticeMap::_next_mapping_better_than(double max_cost) const {
   DMatType init_deformation_gradient(m_deformation_gradient);
@@ -433,6 +578,7 @@ const LatticeMap &LatticeMap::_next_mapping_better_than(double max_cost) const {
         m_reduced_parent.inverse();  // -> _deformation_gradient
     tcost = _calc_strain_cost(m_deformation_gradient);
     if (std::abs(tcost) < (std::abs(max_cost) + std::abs(cost_tol()))) {
+      m_has_current_solution = true;
       m_cost = tcost;
 
       // need to undo the effect of transformation to reduced cell on 'N'
@@ -497,34 +643,44 @@ bool LatticeMap::_check_canonical() const {
 /// invariant to which structure is the child/parent.
 ///
 /// Given a lattice mapping:
-///     (L1 * T1) * N = V^{N} * Q^{N} * L2 * T2
+/// \f[
+///     (L_1 * T_1) * N = V^{N} * Q^{N} * L_2 * T_2
+/// \f]
 ///
 /// Or equivalently,
-///     V_reverse^{N} * Q_reverse^{N} * (L1 * T1) * N = L2 * T2
+/// \f[
+///     V_{reverse}^{N} * Q_{reverse}^{N} * (L_1 * T_1) * N = L_2 * T_2
+/// \f]
 ///
 /// This calculates the cost as:
 ///
 /// Child to parent deformation cost:
+/// \f[
 ///       \tilde{V} = \frac{1}{\det{V}^{1/3}} V
 ///       \tilde{B} = \tilde{V} - I
-///       cost = (1./3.)*\tr{\tilde{B}^{2}}
+///       cost = (1./3.)*\mathmr{Tr}{\tilde{B}^{2}}
+/// \f]
 ///
-/// Parent to child deformation cost, using V.inverse() = U_reverse:
-///       \tilde{U_reverse} = \frac{1}{\det{U_reverse}^{1/3}} U_reverse
-///       \tilde{B_reverse} = \tilde{U_reverse} - I
-///       cost = (1./3.)*\tr{\tilde{B_reverse}^{2}}
+/// Parent to child deformation cost, using \f$V^{-1} = U_{reverse}\f$:
+/// \f[
+///       \tilde{U}_{reverse} = \frac{1}{\det{U_{reverse}}^{1/3}} U_{reverse}
+///       \tilde{B}_{reverse} = \tilde{U}_{reverse} - I
+///       cost = (1./3.)*\mathrm{tr}(\tilde{B}_{reverse}^{2})
+/// \f]
 ///
 /// Direction invariant cost:
+/// \f[
 ///       strain_cost = (1./2.)*(
-///           (1./3.)*\tr{\tilde{B}^{2}} +
-///           (1./3.)*\tr{\tilde{B_reverse}^{2}})
+///           (1./3.)*\mathrm{tr}(\tilde{B}^{2}) +
+///           (1./3.)*\mathrm{tr}(\tilde{B}_{reverse}^{2}))
+/// \f]
 ///
-/// In the above, the `\tilde` indicates that the value is normalized to be
+/// In the above, the \f$\tilde\f$ indicates that the value is normalized to be
 /// volume invariant.
 ///
-/// \param deformation_gradient The deformation gradient, F or F_reverse. The
-///     result is equivalent whether this is the parent to child deformation or
-///     child to parent deformation.
+/// \param deformation_gradient The deformation gradient, \f$F or F_reverse\f$.
+///     The result is equivalent whether this is the parent to child
+///     deformation or child to parent deformation.
 ///
 double isotropic_strain_cost(Eigen::Matrix3d const &deformation_gradient) {
   // written using convention B = V - I of the mapping paper:
@@ -544,16 +700,15 @@ double isotropic_strain_cost(Eigen::Matrix3d const &deformation_gradient) {
 
 /// \brief Returns the symmetrized stretch
 ///
-/// U_symmetrized = (1/NG) * sum_i (G_i * U * G_i.inverse()),
-/// where NG: parent_point_group.size(),
-/// G_i: elements of parent_point_group,
-/// U = right stretch tensor of deformation_gradient
-///
 /// \param deformation_gradient The deformation gradient.
 /// \param parent_point_group Parent point group. Use the point group of the
 ///     parent structure if mapping structures.
 ///
-/// \return U_symmetrized
+/// \return \f$U_{symmetrized}\f$, where:
+///   - \f$U_{symmetrized} = (1/N_{G_1}) * \sum_i (G_1(i) * U * G_1(i)^{-1})\f$,
+///   - \f$U\f$: right stretch tensor of the deformation gradient
+///   - \f$N_{G_1}\f$: Parent point group size
+///   - \f$G_1(i)\f$: Element \f$i\f$ of the parent point group
 ///
 Eigen::Matrix3d symmetrized_stretch(Eigen::Matrix3d const &deformation_gradient,
                                     SymOpVector const &parent_point_group) {
@@ -569,17 +724,16 @@ Eigen::Matrix3d symmetrized_stretch(Eigen::Matrix3d const &deformation_gradient,
 
 /// \brief Returns the symmetry-breaking component of the stretch
 ///
-/// U_symmetrized = (1/NG) * sum_i (G_i * U * G_i.inverse()),
-/// where NG: parent_point_group.size(),
-/// G_i: elements of parent_point_group,
-/// U = right stretch tensor of deformation_gradient,
-/// I = identity matrix
-///
 /// \param deformation_gradient The deformation gradient.
 /// \param parent_point_group Parent point group. Use the point group of the
 ///     parent structure if mapping structures.
 ///
-/// \return U - U_symmetrized + I
+/// \return \f$U - U_{symmetrized} + I\f$, where:
+///   - \f$U\f$: Right stretch tensor of the deformation gradient
+///   - \f$U_{symmetrized} = (1/N_{G_1}) * \sum_i (G_1(i) * U * G_1(i)^{-1})\f$,
+///   - \f$N_{G_1}\f$: Parent point group size
+///   - \f$G_1(i)\f$: Element \f$i\f$ of the parent point group
+///   - \f$I\f$: Identity matrix
 ///
 Eigen::Matrix3d symmetry_breaking_stretch(
     Eigen::Matrix3d const &deformation_gradient,
@@ -604,23 +758,26 @@ Eigen::Matrix3d symmetry_breaking_stretch(
 ///
 /// The symmetry-breaking strain cost is calculated:
 ///
-///     symmetry_breaking_strain_cost =
-///         (1./2.)*(
-///             (1./3.)*trace( (B_sym_break)^2 ) +
-///             (1./3.)*trace( (B_reverse_sym_break)^2 ) )
+/// \f[
+///     \frac{1}{2}*\left(
+///         \frac{1}{3}*\mathrm{tr}\left( B_{sym-break}^2 \right) +
+///         \frac{1}{3}*\mathrm{tr}\left( B_{reverse-sym-break}^2 \right)
+///     \right)
+/// \f]
 ///
 /// Where:
-///     B_sym_break = B - B_sym, the symmetry-breaking Biot strain, with
-///         B = V - I as defined in mapping paper
-///     B_sym = (1./N_G1) * sum_i ( G1_i * B * G1_i.transpose() ),
-///     G1_i are point group operations of parent structure,
-///     N_G1 is the total number of operations,
-///     B_reverse_sym_break = B_reverse - B_reverse_sym is calculated similarly
-///         to B_sym_break, but using B_reverse = U_reverse - I in place of B.
+/// - \f$B = V - I\f$ Biot strain, as defined in the mapping paper
+/// - \f$B_{sym} = (1./N_{G_1}) * \sum_i ( G_1(i) * B * G_1(i)^{-1} )\f$,
+/// - \f$B_{sym-break} = B - B_{sym}\f$, the symmetry-breaking Biot strain
+/// - \f$G_1(i)\f$: Element \f$i\f$ of the parent point group
+/// - \f$N_{G_1}\f$: Parent point group size
+/// - \f$B_{reverse-sym-break} = B_{reverse} - B_{reverse-sym}\f$ is calculated
+///   similarly to \f$B_{sym-break}\f$, but using \f$B_{reverse} = U_{reverse}
+///   - I\f$ in place of \f$B\f$.
 ///
-/// \param deformation_gradient The deformation gradient, F or F_reverse. The
-///     result is equivalent whether this is the parent to child deformation or
-///     child to parent deformation.
+/// \param deformation_gradient The deformation gradient, \f$F\f$ or
+///     \f$F_{reverse}\f$. The result is equivalent whether this is the parent
+///     to child deformation or child to parent deformation.
 /// \param parent_point_group Parent point group. Use the point group of the
 ///     parent structure if mapping structures.
 ///

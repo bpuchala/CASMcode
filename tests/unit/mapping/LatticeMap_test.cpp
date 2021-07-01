@@ -229,25 +229,41 @@ TEST_F(StrainCostTest, ShearTest2) {
       << " cost_yz: " << cost_yz;
 }
 
-TEST(LatticeMapTest, Test1) {
-  // parent
+class LatticeMapTest : public testing::Test {
+ protected:
   Eigen::Matrix3d L1;
-  L1 << 3.233986860000, -1.616993430000, 0.000000000000,  //
-      0.000000000000, 2.800714770000, 0.000000000000,     //
-      0.000000000000, 0.000000000000, 10.337356680000;    //
-
-  xtal::Lattice L1_lattice(L1);
-  auto L1_point_group = xtal::make_point_group(L1_lattice);
-
-  // child
+  xtal::Lattice L1_lattice;
+  std::vector<xtal::SymOp> L1_point_group;
   Eigen::Matrix3d L2;
-  L2 << 3.269930775653, 0.000000000000, 0.000000000000,  //
-      -1.634965387827, 2.831843113861, 0.000000000000,   //
-      0.000000000000, 0.000000000000, 10.464806115486;   //
+  xtal::Lattice L2_lattice;
+  std::vector<xtal::SymOp> L2_point_group;
 
-  xtal::Lattice L2_lattice(L2);
-  auto L2_point_group = xtal::make_point_group(L2_lattice);
+  LatticeMapTest()
+      : L1(make_L1()),
+        L1_lattice(L1),
+        L1_point_group(xtal::make_point_group(L1_lattice)),
+        L2(make_L2()),
+        L2_lattice(L2),
+        L2_point_group(xtal::make_point_group(L2_lattice)) {}
 
+  static Eigen::Matrix3d make_L1() {
+    Eigen::Matrix3d L1;
+    L1 << 3.233986860000, -1.616993430000, 0.000000000000,  //
+        0.000000000000, 2.800714770000, 0.000000000000,     //
+        0.000000000000, 0.000000000000, 10.337356680000;    //
+    return L1;
+  }
+
+  static Eigen::Matrix3d make_L2() {
+    Eigen::Matrix3d L2;
+    L2 << 3.269930775653, 0.000000000000, 0.000000000000,  //
+        -1.634965387827, 2.831843113861, 0.000000000000,   //
+        0.000000000000, 0.000000000000, 10.464806115486;   //
+    return L2;
+  }
+};
+
+TEST_F(LatticeMapTest, Test1) {
   // range of elements of N matrix (controls number of potential mappings to be
   /// considered... larger is more)
   int unimodular_element_range = 1;
@@ -306,4 +322,37 @@ TEST(LatticeMapTest, Test1) {
   EXPECT_TRUE(almost_equal(isometry, Q_expected))
       << "Unexpected isometry. Found isometry:\n"
       << isometry;
+}
+
+TEST_F(LatticeMapTest, Test2) {
+  // range of elements of N matrix (controls number of potential mappings to be
+  /// considered... larger is more)
+  int unimodular_element_range = 1;
+
+  double max_lattice_cost = 1e20;
+
+  bool use_symmetry_breaking_strain_cost = false;
+
+  xtal::LatticeMap lattice_map{L1_lattice,
+                               L2_lattice,
+                               unimodular_element_range,
+                               L1_point_group,
+                               L2_point_group,
+                               max_lattice_cost,
+                               use_symmetry_breaking_strain_cost};
+
+  double max_cost = 0.4;
+  std::vector<Eigen::Matrix3d> N;
+  std::vector<Eigen::Matrix3d> F;
+  std::vector<double> cost;
+  while (lattice_map.next_mapping_better_than(max_cost)) {
+    N.push_back(lattice_map.matrixN());
+    F.push_back(lattice_map.deformation_gradient());
+    cost.push_back(lattice_map.strain_cost());
+    // std::cout << "---\n";
+    // std::cout << "N: \n" << lattice_map.matrixN() << std::endl;
+    // std::cout << "F: \n" << lattice_map.deformation_gradient() << std::endl;
+    // std::cout << "cost: \n" << lattice_map.strain_cost() << std::endl;
+  }
+  ASSERT_EQ(N.size(), 15);
 }

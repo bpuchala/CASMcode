@@ -87,8 +87,9 @@ void k_best_mapping_test(xtal::SimpleStructure const &sstruc, double d) {
         "Check for all mappings better than the pure swap mapping, which has a "
         "cost of 0.5*d^2. Without considering symmetry of child structure "
         "there are 8.");
+    bool robust = true;
     xtal::StrucMapper mapper(xtal::SimpleStrucMapCalculator(sstruc, fgroup),
-                             0.5, 0.5, xtal::StrucMapper::robust);
+                             0.5, 0.5, robust);
     auto sym_set = mapper.map_deformed_struc_impose_lattice(
         sstruc, xtal::Lattice(sstruc.lat_column_mat), 0,
         xtal::StrucMapping::big_inf(), 0.5 * d * d + 1e-6);
@@ -108,8 +109,9 @@ void k_best_mapping_test(xtal::SimpleStructure const &sstruc, double d) {
         "Check for all mappings better than the pure swap mapping, which has a "
         "cost of 0.5 * d^2. Considering symmetry of child structure, there are "
         "4.");
+    bool robust = true;
     xtal::StrucMapper mapper(xtal::SimpleStrucMapCalculator(sstruc, fgroup),
-                             0.5, 0.5, xtal::StrucMapper::robust);
+                             0.5, 0.5, robust);
     auto sym_set = mapper.map_deformed_struc_impose_lattice(
         sstruc, xtal::Lattice(sstruc.lat_column_mat), 0,
         xtal::StrucMapping::big_inf(), 0.5 * d * d + 1e-6, false, fgroup);
@@ -339,15 +341,16 @@ TEST(SymInvariantMappingTest, Hcp) {
   // Initialize the defaults for structure mapping
   double lattice_weight(0.5), max_vol_change(2), cost_tol(0.00001),
       min_va_frac(0.0), max_va_frac(0.0);
-  int options(xtal::StrucMapper::robust);
+  bool robust = true;
+  bool soft_va_limit = false;
 
   // Initialize a symmetrized  strucmapper
   xtal::StrucMapper sym_struc_map(
       xtal::SimpleStrucMapCalculator(simple_struc, parent_fg,
                                      xtal::SimpleStructure::SpeciesMode::ATOM,
                                      allowed_molecule_names(basic_struc)),
-      lattice_weight, max_vol_change, options, cost_tol, min_va_frac,
-      max_va_frac);
+      lattice_weight, max_vol_change, robust, soft_va_limit, cost_tol,
+      min_va_frac, max_va_frac);
   sym_struc_map.set_symmetrize_lattice_cost(true);
 
   double ca_inc = (ca_max - ca_min) / num_points;
@@ -448,15 +451,16 @@ TEST(SymInvariantMappingTest, shuffle) {
   Index k_best = 1;
   double max_cost(1e10), min_cost(-1);
   bool use_child_sym = true;
-  int options(xtal::StrucMapper::robust);
+  bool robust = true;
+  bool soft_va_limit = false;
 
   // Initialize a symmetrized  strucmapper
   xtal::StrucMapper sym_struc_map(
       xtal::SimpleStrucMapCalculator(simple_struc, parent_fg,
                                      xtal::SimpleStructure::SpeciesMode::ATOM,
                                      allowed_molecule_names(basic_struc)),
-      lattice_weight, max_vol_change, options, cost_tol, min_va_frac,
-      max_va_frac);
+      lattice_weight, max_vol_change, robust, soft_va_limit, cost_tol,
+      min_va_frac, max_va_frac);
   sym_struc_map.set_symmetrize_atomic_cost(true, parent_fg,
                                            parent_permute_group);
 

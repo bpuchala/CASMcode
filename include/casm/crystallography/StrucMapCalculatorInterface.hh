@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "casm/crystallography/Adapter.hh"
+#include "casm/crystallography/BasicStructureTools.hh"
 #include "casm/crystallography/SimpleStructure.hh"
 #include "casm/crystallography/SymType.hh"
 #include "casm/global/definitions.hh"
@@ -197,23 +198,9 @@ class StrucMapCalculatorInterface {
   /// into pure translations and rotations/rotoreflections
   /// _factor_group should be sorted in order of decreasing character
   void _set_sym_info(SymOpVector const &_factor_group) {
-    m_point_group.clear();
-    m_internal_translations.clear();
-
-    // Internal translations are any translation associated with identity
-    m_point_group.push_back(SymOp::identity());
-
-    for (SymOp const &op : _factor_group) {
-      if (get_matrix(op).isIdentity(TOL) && !get_time_reversal(op)) {
-        m_internal_translations.push_back(get_translation(op));
-      }
-      if (!almost_equal(get_matrix(op), get_matrix(m_point_group.back()),
-                        TOL) ||
-          get_time_reversal(op) != get_time_reversal(m_point_group.back())) {
-        m_point_group.push_back(op);
-        m_point_group.back().translation.setZero();
-      }
-    }
+    m_point_group = make_crystal_point_group(_factor_group, xtal_tol());
+    m_internal_translations =
+        make_internal_translations(_factor_group, xtal_tol());
   }
 
   StrucMapping::AllowedSpecies const &_allowed_species() const {

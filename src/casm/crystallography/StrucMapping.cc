@@ -254,10 +254,10 @@ void check_equal(Eigen::MatrixXd const &A, Eigen::MatrixXd const &B,
 }
 }  // namespace
 
-/// \class LatticeNode
+/// \struct LatticeNode
 /// \brief Data structure describing a lattice mapping relationship
 ///
-/// A general map for child structure onto a parent structure may require
+/// A general map for a child structure onto a parent structure may require
 /// forming a supercell of the parent structure (most commonly) and/or of the
 /// child structure. As such, the LatticeNode is specified in terms of
 /// superlattices of both the parent and the child, as well as deformation and
@@ -293,12 +293,13 @@ void check_equal(Eigen::MatrixXd const &A, Eigen::MatrixXd const &B,
 ///
 ///       stretch
 ///
-/// - \f$Q^{N}\f$: The isometry matrix, which describes the rigid
-///   transformation that de-rotates (de-reflects, etc.) a superlattice of
-///   child. A property of \f$Q^{N}\f$ is that \f$(Q^{N})^{-1} ==
-///   (Q^{N})^{T}\f$. It is equal to:
+/// - \f$Q^{N}\f$: The isometry (distance-preserving transformation) matrix,
+///   which describes the transformation that de-rotates (de-reflects, etc.) a
+///   superlattice of child. A property of \f$Q^{N}\f$ is that \f$(Q^{N})^{-1}
+///   == (Q^{N})^{T}\f$. It is equal to:
 ///
 ///       isometry
+///
 ///
 /// Thus:
 /// - \f$L_1 * T_1 * N\f$: A parent supercell lattice, as a column vector
@@ -324,11 +325,11 @@ void check_equal(Eigen::MatrixXd const &A, Eigen::MatrixXd const &B,
 /// superlattice of the child lattice to a superlattice of the parent lattice
 /// can be written:
 /// \f[
-///     F_{child \rightarrow parent} = F = V * Q = Q * U
+///     F_{child \to parent} = F = V * Q = Q * U
 /// \f]
 /// The reverse transformation (parent to child transformation) can be written:
 /// \f[
-///     F_{parent \rightarrow child} = F_{reverse} = V_{reverse} *
+///     F_{parent \to child} = F_{reverse} = V_{reverse} *
 ///     Q_{reverse} = Q_{reverse} * U_{reverse}
 /// \f]
 /// where \f$Q^{-1} = Q^{\top}\f$, using \f$^{\top}\f$ to indicate matrix
@@ -358,17 +359,17 @@ void check_equal(Eigen::MatrixXd const &A, Eigen::MatrixXd const &B,
 /// as a DoF or in MappedProperties, is defined using the "reverse" sense, as a
 /// transformation of parent (supercell of prim) to child:
 /// \f[
-///     F_{parent \rightarrow child} * L_1 * T_1 * N = L_2 * T_2
+///     F_{parent \to child} * L_1 * T_1 * N = L_2 * T_2
 /// \f]
-/// For example, the DoF "Ustrain", is \f$U_{reverse} = $U_{parent \rightarrow
+/// For example, the \f$U\f$ of `"Ustrain"`, is \f$U_{reverse} = $U_{parent \to
 /// child}\f$.
 ///
 ///
 /// ### Relating LatticeNode and LatticeMap definitions:
 ///
 /// The LatticeMap class performs searches over possible lattice mappings in
-/// order to find low deformation cost mappings. It generates solutions \f($N,
-/// F_{reverse}^{N}})\f$ that satisfy:
+/// order to find low deformation cost mappings. It generates solutions \f$(N,
+/// F_{reverse}^{N})\f$ that satisfy:
 /// \f[
 ///     F_{reverse}^{N} * L_1 * T_1 * N = L_2 * T_2
 /// \f]
@@ -401,8 +402,6 @@ LatticeNode::LatticeNode(Superlattice _parent, Superlattice _child,
       "LatticeNode constructor error: _parent.superlattice().lat_column_mat() "
       "!= _child.superlattice().lat_column_mat()");
 }
-
-// TODO: remove child_N_atom, as it does nothing
 
 /// \brief Construct a LatticeNode by calculating the deformation tensor that
 /// maps a particular child superlattice to a particular parent superlattice
@@ -470,7 +469,7 @@ LatticeNode::LatticeNode(Lattice const &parent_prim, Lattice const &parent_scel,
 /// gradient and choice of lattice vectors that map a supercell of the unmapped
 /// child to a supercell of the parent. Specifically:
 /// - \f$ L_1 * T_1 \f$ = `lattice_map.parent_matrix()`
-/// - \f$F_{parent \rightarrow child}\f$ = `lattice_map.deformation_gradient()`
+/// - \f$F_{parent \to child}\f$ = `lattice_map.deformation_gradient()`
 /// - \f$N\f$ = `lattice_map.matrixN`
 /// \param parent_prim primitive lattice being mapped to (\f$L_1\f$)
 /// \param unmapped_child_prim primitive lattice being mapped (\f$L_2\f$)
@@ -588,7 +587,7 @@ LatticeNode make_lattice_node(Lattice const &parent_prim,
 /// gradient and choice of lattice vectors that map a supercell of the unmapped
 /// child to a supercell of the parent. Specifically, it specifies:
 /// - \f$ L_1 * T_1 \f$ = `lattice_map.parent_matrix()`
-/// - \f$F_{parent \rightarrow child}\f$ = `lattice_map.deformation_gradient()`
+/// - \f$F_{parent \to child}\f$ = `lattice_map.deformation_gradient()`
 /// - \f$N\f$ = `lattice_map.matrixN`
 /// \param parent_prim primitive lattice being mapped to (\f$L_1\f$)
 /// \param unmapped_child_prim primitive lattice being mapped (\f$L_2\f$)
@@ -689,48 +688,93 @@ bool identical(AssignmentNode const &A, AssignmentNode const &B) {
 /// \class MappingNode
 /// \brief Data structure holding a mapping between structures
 ///
-/// The structure mapping methods map a (unmapped) "child" structure
-/// (`xtal::SimpleStructure`) onto a reference "parent" structure (also
-/// `xtal::SimpleStructure`) through a combination of permutation,
-/// displacement, and translation of atoms, and both rigid and deformation
-/// transformations of the overall structure. The "mapped child" is the result
-/// of applying the permutation, translation, and rigid transformations to
-/// create a structure exactly equivalent to the "child" structure, but
-/// resolved to the setting of the parent structure.
+/// Contains structure mapping results of the methods implemented by
+/// StrucMapper.
 ///
-/// Lattice mapping results satisfy:
+/// ### Interpreting the mapping results ###
 ///
-///     mapped_child.lat_column_mat = mapping.lattice_node.stretch *
+/// Mapping inputs:
+/// - SimpleStructure parent: Reference structure begin mapped to. It is
+///   specified via StrucMapper constructor arguments.
+/// - SimpleStructure unmapped_child: Structure being mapped. It is input to a
+///   StrucMapper `map_X_struc[_Y]` method.
+///
+/// Mapping instance:
+/// - StrucMapper struc_mapper: StrucMapper instance, for mapping
+///   unmapped_child to parent.
+///
+/// Results:
+/// - MappingNode mapping: An individual solution returned by a StrucMapper
+///   `map_X_struc[_Y]` method. Solutions are returned as std::set<MappingNode>
+///   because, depending on the parameters used, multiple solutions may be
+///   returned.
+/// - SimpleStructure mapped_child: Resulting mapped structure. It is not
+///   returned directly as part of the mapping results, but it can be
+///   constructed using:
+///
+///       struc_mapper.calculator().resolve_setting(mapping_node,
+///                                                 unmapped_child)
+///
+/// - SimpleStructure parent_superstructure: The ideal super structure of the
+///   reference parent structure the child was mapped to. It is not
+///   returned directly as part of the mapping results, but it can be
+///   constructed using:
+///
+///       make_superstructure(mapping.parent.transformation_matrix_to_super(),
+///                           parent)
+///
+///
+/// ### Lattice mapping results ###
+///
+/// Lattice mapping results satisfy the relation:
+///
+///     mapped_child.lat_column_mat == mapping.lattice_node.stretch *
 ///         mapping.lattice_node.isometry *
 ///         unmapped_child.lat_column_mat *
 ///         mapping.lattice_node.child.transformation_matrix_to_super()
 ///             .cast<double>();
 ///
-/// Atomic assignment mapping results satisfy:
+/// ### Atomic assignment results ###
 ///
-///     mapped_child.atom_info.names[i] =
+/// Atomic assignment mapping results satisfy the relations:
+///
+///     mapped_child.atom_info.names[i] ==
 ///         unmapped_child.atom_info.names[perm[i]],
 ///
-///     mapped_child.atom_info.coords.col(i) =
+///     mapped_child.atom_info.coords.col(i) ==
 ///         parent_superstructure.coords(i) +
-///         mapping.atom_displacement.col(i) =
+///         mapping.atom_displacement.col(i) ==
 ///         mapping.lattice_node.stretch * mapping.lattice_node.isometry *
 ///         unmapped_child.atom_info.coords.col(perm[i]) +
 ///             mapping.atomic_node.translation,
 ///
-///     where perm = mapping.atom_permutation, and
-///     due to mapping within periodic boundaries, coordinate comparisons
-///     must be made checking for equality up to a lattice translation.
+/// where
 ///
-/// Additionally, `mapping.mol_map`, and `mapping.mol_labels` hold
-/// information used for on molecule mapping:
+///     perm = mapping.atom_permutation,
 ///
-///     mapping.mol_map[i] (std::set<Index): the set atom indices of parent
-///         superstructure that comprise the molecule at its i-th site.
+/// and due to mapping within periodic boundaries, coordinate comparisons
+/// must be made checking for equality up to a lattice translation.
 ///
-///     mapping.mol_labels[i] (std::pair<std::string, Index>): the name and
-///         occupant index of the molecule on the the i-th site of the
-///         parent superstructure
+///
+/// ### Atom to molecule assignment results ###
+///
+/// \note Currently only structures with single atom molecules can be mapped.
+/// These values are structured with future developments in mind and currently
+/// used even though molecules only contain a single atom.
+///
+/// Additionally, \link MappingNode::mol_map mol_map\endlink, and \link
+/// MappingNode::mol_labels mol_labels\endlink hold information used for
+/// molecule mapping:
+///
+/// - \link MappingNode::mol_map mol_map\endlink[i] (std::set<Index>): the set
+///   of atom indices of the parent superstructure that comprise the molecule
+///   at its i-th site.
+///
+/// - \link MappingNode::mol_labels mol_labels\endlink[i]
+///   (std::pair<std::string, Index>): the name and occupant index of the
+///   molecule on the the i-th site of the parent superstructure
+///
+/// So the following hold:
 ///
 ///     mapped_child.mol_info.names[i] = mapping.mol_labels[i].first
 ///
@@ -738,28 +782,62 @@ bool identical(AssignmentNode const &A, AssignmentNode const &B) {
 ///         mapping.lattice_node.stretch.inverse() *
 ///         (parent_superstructure.coords(i) + mol_displacement.col(i))
 ///
-///     where mol_displacement is 3xN matrix, mol_displacement.col(i) =
-///         mean of mapping.atom_displacement.col(j),
-///         for j in mapping.mol_map[i],
-///     N is number of sites in parent_superstructure, and
-///     due to mapping within periodic boundaries, coordinate comparisons
-///     must be made checking for equality up to a lattice translation.
+/// where mol_displacement is a 3xN matrix in which the i-th column gives the
+/// mean displacement of the atoms in the molecule on that site:
+///
+///     mol_displacement.col(i) =
+///         (mean of mapping.atom_displacement.col(j),
+///         for j in mapping.mol_map[i]),
+///
+/// N is number of sites in parent_superstructure, and due to mapping within
+/// periodic boundaries, coordinate comparisons must be made checking for
+/// equality up to a lattice translation.
 ///
 ///
-/// DoF / properties are mapped according to:
+/// ### Degree of freedom and property mapping ###
 ///
-///     For global DoF/properties:
-///         v_mapped = matrix * v_unmapped,
+/// DoF / properties are mapped using a transformation matrix constructed by
+/// AnisoValTraits from the mapping results.
 ///
-///     For site DoF/properties, on site i:
-///         v_mapped[i] = matrix * v_unmapped[perm[i]],
+/// For global DoF/properties, the value is mapped using:
 ///
-///     where matrix = AnisoValTraits(type).symop_to_matrix(
+///     v_mapped = matrix * v_unmapped,
+///
+/// For site DoF/properties, the value on site i is mapped using:
+///
+///     v_mapped[i] = matrix * v_unmapped[perm[i]],
+///
+/// where
+///
+///     matrix = AnisoValTraits(type).symop_to_matrix(
 ///                        mapping.lattice_node.isometry,
 ///                        mapping.lattice_node.stretch.inverse() *
 ///                            mapping.atomic_node.translation,
 ///                        mapping.atomic_node.time_reversal)
-///     and perm = mapping.atom_permutation
+/// and
+///
+///     perm = mapping.atom_permutation
+///
+///
+/// ### Conversion to equivalent SymOp ###
+///
+/// If the same SimpleStructure is used for both the parent and child, and the
+/// lattice of the solutions is constrained to be identical to the input
+/// lattice, then the resulting mapping solutions give the factor group of the
+/// structure. The set of MappingNode solutions can be converted to vector of
+/// SymOp using:
+///
+/// \code
+/// std::set<MappingNode> mappings = ... result from StrucMapper ...
+/// // converts std::set<MappingNode> to
+/// //     xtal::SymOpVector (= std::vector<xtal::SymOp>)
+/// adapter::Adapter<xtal::SymOpVector, std::set<MappingNode>> adapter();
+/// xtal::SymOpVector factor_group = adapter(mappings);
+/// \endcode
+///
+/// See StrucMapper for a complete example getting the factor group of a
+/// SimpleStructure.
+///
 
 //*******************************************************************************************
 
@@ -823,9 +901,139 @@ bool MappingNode::operator<(MappingNode const &B) const {
 /// \brief Implements a method for mapping a "child" crystal structure as a
 /// deformation of a reference "parent" crystal structure.
 ///
-/// Note: this documentation uses the notation and conventions from the paper
-/// `Comparing crystal structures with symmetry and geometry`,
-/// by John C Thomas, Anirudh Raju Natarajan, Anton Van der Ven
+/// Note: This documentation uses the notation and conventions from the paper
+/// "Comparing crystal structures with symmetry and geometry",
+/// by John C. Thomas, Anirudh Raju Natarajan, Anton Van der Ven.
+///
+/// ### Example 1: Basic usage ###
+///
+/// In many cases, the default structure mapping options will work fine, but
+/// perhaps be less efficient than if some known constraints can be applied.
+/// \code
+/// // parent: (reference structure)
+/// xtal::BasicStructure basicstructure = ...;
+/// xtal::SimpleStructure parent = make_simple_structure(basicstructure);
+/// xtal::SymOpVector parent_factor_group =
+///     xtal::make_factor_group(basicstructure);
+///
+/// // child: (structure being mapped to parent)
+/// xtal::SimpleStructure child = ...;
+/// xtal::SymOpVector child_factor_group = identity_group();
+///
+/// xtal::SimpleStrucMapCalculator calculator{
+///     parent, parent_factor_group,
+///     CASM::xtal::SimpleStructure::SpeciesMode::ATOM,
+///     allowed_molecule_names(basicstructure)};
+/// xtal::StrucMapper mapper(calculator);
+///
+/// std::set<xtal::MappingNode> mappings = mapper.map_deformed_struc(child);
+/// \endcode
+///
+/// ### Example 2: All options, most general method ###
+///
+/// The following lays out all possible options for the most general mapping
+/// approach.
+/// \code
+/// // --- Parent and child structures ---
+///
+/// // parent: (reference structure)
+/// xtal::BasicStructure basicstructure = ...;
+/// xtal::SimpleStructure parent = make_simple_structure(basicstructure);
+/// xtal::SymOpVector parent_factor_group =
+///     xtal::make_factor_group(basicstructure);
+///
+/// // child: (structure being mapped to parent)
+/// xtal::SimpleStructure child = ...;
+/// xtal::SymOpVector child_factor_group = identity_group();
+///
+/// // --- StrucMapper constructor parameters ---
+///
+/// // Specifies parent structure, factor group, allowed species on each
+/// // structure site (default: SimpleStrucMapCalculator(parent));
+/// xtal::SimpleStrucMapCalculator calculator{
+///     parent, parent_factor_group,
+///     CASM::xtal::SimpleStructure::SpeciesMode::ATOM,
+///     allowed_molecule_names(basicstructure)};
+///
+/// // Total cost weighting, lattice deformation component (default: 0.5)
+/// // total_cost = lattice_weight * lattice_deformation_cost +
+/// //              (1-lattice_weight) * atomic_deformation_cost
+/// double lattice_weight = 0.5;
+///
+/// // Potential parent superlattice volume constraint (default: 0.5)
+/// double max_volume_change = 0.5;
+///
+/// // Perform additional checks to determine if mapping is degenerate in cost
+/// // to other mappings, which can occur if the imported structure has
+/// // symmetry that is incompatible with the parent structure. Results in
+/// // slower execution. (default: false)
+/// bool robust = false;
+///
+/// // If true, ensures that if no supercell volume satisfies vacancy
+/// // constraints, the smallest possible volume is used.
+/// // Default behavior results in no valid mapping. (default: false)
+/// bool soft_va_limit = false;
+///
+/// // Mapping cost comparison tolerance (default: TOL)
+/// double cost_tol = TOL;
+///
+/// // Potential parent superlattice volume constraint (default: 0.)
+/// double min_va_frac = 0.0;
+///
+/// // Potential parent superlattice volume constraint (default: 1.)
+/// double max_va_frac = 1.0;
+///
+/// xtal::StrucMapper mapper{calculator, lattice_weight, max_volume_change,
+///                          robust, soft_va_limit, cost_tol, min_va_frac,
+///                          max_va_frac};
+///
+/// // --- Standard mapping method parameters ---
+///
+/// // How many solutions to return (approximately, see detailed description
+/// // for StrucMapper::map_deformed_struc) (default: 1)
+/// Index k_best = 1;
+///
+/// // Max cost solution to keep (default: xtal::StrucMapping::big_inf())
+/// double max_cost = xtal::StrucMapping::big_inf();
+///
+/// // All mappings better than min_cost will be reported, without contributing
+/// // to 'k'. (default: -TOL)
+/// double min_cost = -TOL;
+///
+/// // Keep invalid solutions due to failed assignment? (default: false)
+/// bool keep_invalid = false;
+///
+/// std::set<xtal::MappingNode> mappings = mapper.map_deformed_struc(
+///     child, k_best, max_cost, min_cost, keep_invalid, child_factor_group);
+/// \endcode
+///
+/// ### Example: Using StrucMapper to find the factor group ###
+///
+/// If the same SimpleStructure is used for both the parent and child, and the
+/// lattice of the solutions is constrained to be identical to the input
+/// lattice, the resulting mapping solutions give the factor group of the
+/// structure.
+/// \code
+/// xtal::SimpleStructure structure = ...;
+///
+/// // note: no "parent_factor_group" provided here
+/// xtal::StrucMapper mapper{xtal::SimpleStrucMapCalculator(structure)};
+///
+/// double max_cost = xtal::StrucMapping::big_inf();
+/// double min_cost = 1e-3; // all mappings better than min_cost are kept
+/// int k = 0; // don't keep any mappings that are worse than 'min_cost'
+///
+/// std::set<MappingNode> mappings = mapper.map_deformed_struc_impose_lattice(
+///     structure, xtal::Lattice(structure.lat_column_mat), k, max_cost,
+///     min_cost);
+///
+/// // converts std::set<MappingNode> to
+/// //     xtal::SymOpVector (= std::vector<xtal::SymOp>)
+/// adapter::Adapter<xtal::SymOpVector, std::set<MappingNode>> adapter();
+/// xtal::SymOpVector factor_group = adapter(mappings);
+/// \endcode
+///
+/// ### Structure mapping summary ###
 ///
 /// In general, structure mapping may require mapping a superstructure of the
 /// child structure to a superstructure of the parent structure. In this
@@ -853,102 +1061,155 @@ bool MappingNode::operator<(MappingNode const &B) const {
 ///   parent lattice are related by an integer transformation and a parent
 ///   structure point group operation
 ///
+/// ### Mapping results ###
 ///
-/// Lattice mapping
-/// ---------------
+/// The `map_X_struc[_Y]` method results are returned as a set of MappingNode,
+/// which may contain more than one potential solution depending on the method
+/// arguments. The MappingNode data structure contains:
+/// - LatticeNode \link MappingNode::lattice_node lattice_node\endlink: Holds
+///   lattice mapping results
+/// - AssignmentNode \link MappingNode::atomic_node atomic_node\endlink: Holds
+///   atomic assignment results
+/// - Additional data on the displacements, permutation, and cost determined
+///   from the lattice and assignment mapping solutions.
 ///
-/// Solving:
+/// ### Lattice mapping ###
+///
+/// \note In the following, `mapping` is a MappingNode result, and
+/// `unmapped_child` is a `map_X_struc[_Y]` method argument.
+///
+/// The lattice mapping portion of the structure mapping algorithm finds
+/// solutions (\f$N, V^{N}, Q^{N}\f$) of:
 /// \f[
-///     L_1 * T_1 * N = V^{N} * Q^{N} * L_2 * T_2
+///     L_1 * T_1 * N = V^{N} * Q^{N} * L_2 * T_2,
 /// \f]
+/// where:
+/// - \f$L_1\f$: Parent lattice (lattice of reference structure). It is equal to
 ///
-/// L1: Parent lattice (lattice of reference structure)
-/// T1: Integer transformation matrix to parent superlattice
-///  N: Unimodular matrix (integer matrix, with determinant 1) transforms
-///     parent superlattice vectors to create an equivalent superlattice
-/// L2: Child lattice (lattice of structure to be mapped)
-/// T2: Integer transformation matrix to child superlattice (L2 * T2). When the
-///     parent lattice is the lattice of the primitive structure, then T2 = I.
-/// V^{N}: Stretch, a symmetric matrix that describes the deformation that
-///     maps a de-rotated child superlattice to a parent superlattice.
-/// Q^{N}: Isometry matrix, describes rigid transformation that de-rotates a
-///     superlattice of child. A property of Q^{N} is that (Q^{N}).inverse()
-///     == (Q^{N}).transpose().
+///       this->parent().lat_column_mat()
+///
+/// - \f$T_1\f$: Integer transformation matrix to parent superlattice.
+/// - \f$N\f$: Unimodular matrix (integer matrix, with \f$\det{N}=1\f$)
+///   that transforms parent superlattice vectors to create an equivalent
+///   lattice.
+/// - \f$L_1 * T_1 * N\f$: The combination is the parent superlattice the child
+///   has been mapped to. It is equal to
+///
+///       mapping.lattice_node.parent.super_lattice().lat_column_mat()
+///
+/// - \f$L_2\f$: Child lattice (lattice of structure to be mapped). It is equal
+///   to
+///
+///       unmapped_child.lat_column_mat
+///
+/// - \f$T_2\f$: Integer transformation matrix to child superlattice (\f$L_2 *
+///   T_2\f$). When the parent lattice is the lattice of the primitive
+///   structure, then \f$T_2 = I\f$.
+/// - \f$V^{N}\f$: Stretch, a symmetric matrix that describes the deformation
+///   that maps a de-rotated child superlattice to a parent superlattice. It is
+///   equal to
+///
+///       mapping.lattice_node.stretch
+///
+/// - \f$Q^{N}\f$: Isometry (distance-preserving transformation) matrix,
+///   that describes the transformation that de-rotates (de-reflects, etc.) a
+///   superlattice of child to align it with a parent superlattice. A property
+///   of \f$Q^{N}\f$ is that \f$(Q^{N})^{-1}  == (Q^{N})^{\top}\f$. It is
+///   equal to
+///
+///       mapping.lattice_node.isometry
+///
 ///
 /// Spelling it all out:
-/// - L1: unmapped child lattice
-/// - L1 * T1: a parent superlattice
-/// - L1 * T1 * N: lattice vectors for an equivalent lattice to a parent
+/// - \f$L_1\f$: The (unmapped) child lattice
+/// - \f$L_1 * T_1\f$: A parent superlattice
+/// - \f$L_1 * T_1 * N\f$: lattice vectors for an equivalent lattice to a parent
 ///   superlattice
-/// - L2 * T2: a child superlattice. When the parent lattice is the lattice of
-///   the primitive structure, then T2 = I.
-/// - Q^{N} * (L2 * T2): a de-rotated child superlattice
-/// - V^{N} * Q^{N} * L2 * T2: a de-rotated and undeformed child superlattice
-/// - F^{N} = V^{N} * Q^{N}: the deformation gradient for the transformation
-///   of a superlattice of the child lattice to a superlattice of the parent
-///   lattice (F^{N} = F_child_to_parent). Note that the strain associated
-///   with a configuration, whether as a DoF or in MappedProperties is
-///   defined in the reverse sense, as a transformation of parent (supercell
-///   of prim) to child:
-///       F_parent_to_child * L1 * T1 * N = L2 * T2, where
-///       F_parent_to_child = F_child_to_parent.inverse()
-///   For example, `Ustrain` is defined: F_parent_to_child = R * U.
+/// - \f$L_2 * T_2\f$: A child superlattice. When the parent lattice is the
+///   lattice of the primitive structure, then \f$T_2 = I\f$.
+/// - \f$Q^{N} * L_2 * T_2\f$: a de-rotated child superlattice
+/// - \f$V^{N} * Q^{N} * L_2 * T_2\f$: a de-rotated and undeformed child
+///   superlattice
+/// - \f$F^{N} = V^{N} * Q^{N}\f$: the deformation gradient for the
+///   transformation of a superlattice of the child lattice to a superlattice
+///   of the parent lattice (\f$F^{N} = F_{child \to parent}\f$). Note that the
+///   strain associated with a configuration, whether as a DoF or in
+///   MappedProperties is defined in the reverse sense, as a transformation of
+///   parent (supercell of prim) to child:
+///   \f[
+///       F_{parent \to child} * L_1 * T_1 * N = L_2 * T_2, \\
+///       F_{parent \to child} = F_{child \to parent}^{-1}
+///   \f]
+///   For example, the \f$U\f$ of `"Ustrain"` is defined: \f$F_{parent \to
+///   child} = Q * U\f$. See LatticeNode for a more detailed description.
 ///
 /// In general, lattice mapping proceeds using the following steps:
 ///
-/// 1) Propose pairs of possible parent and child superlattices, S1 = L1 * T1,
-/// and S2 = L2 * T2, respectively. For mapping to a prim, S2 is fixed to S2 =
-/// L2. The possible values of S1 may be constrained based on whether or not
-/// vacancies are allowed, and if so how many (through the fixed_volume,
-/// min_va_frac, and max_va_frac parameters).
+/// 1) Propose pairs of possible parent and child superlattices, \f$S_1 = L_1 *
+/// T_1\f$, and \f$S_2 = L_2 * T_2\f$, respectively. For mapping to a prim,
+/// \f$S_2\f$ is fixed to \f$S_2 = L_2\f$. The possible values of \f$S_1\f$ may
+/// be constrained based on whether or not vacancies are allowed, and if so how
+/// many (through the fixed_volume, min_va_frac, and max_va_frac parameters).
 ///
-/// 2) For each pair (S1, S2), find the (N, F^{N}), where S1 * N = F^{N} * S2,
-/// that minimize the strain cost, by looping over unimodular matrices N with
-/// elements in the range -1/+1, -2/+2, etc. and solving for F^{N}. If
-/// requested, the k-best solutions (N, F^{N}) for a given (S1, S2) can be
-/// saved. (Note that the solution is performed by LatticeMap, and that
-/// LatticeMap::deformation_gradient() is F_parent_to_child). See
-/// `isotropic_strain_cost` and `symmetry_breaking_strain_cost` for details on
+/// 2) For each pair \f$(S_1, S_2)\f$, find the \f$(N, F^{N})\f$, where \f$S_1
+/// * N = F^{N} * S_2\f$, that minimize the strain cost, by looping over
+/// unimodular matrices \f$N\f$ with elements in the range -1/+1, -2/+2, etc.
+/// and solving for \f$F^{N}\f$. If requested, the k-best solutions \f$(N,
+/// F^{N})\f$ for a given \f$(S_1, S_2)\f$ can be saved. (Note that the
+/// solution is performed by LatticeMap, and that
+/// LatticeMap::deformation_gradient() is F_{parent \to child}. See
+/// isotropic_strain_cost and symmetry_breaking_strain_cost for details on
 /// the strain cost calculation, which can be performed including the entire
 /// lattice deformation, or just the part of the lattice deformation that
 /// breaks the symmetry of the parent structure.
 ///
-/// Sub-optimal solutions: Suboptimal lattice mapping solutions are of interest
+/// Sub-optimal solutions: Sub-optimal lattice mapping solutions are of interest
 /// for several reasons: they might still be optimal total mapping soluations,
 /// they might be important low energy transformation pathways, they might be
 /// optimal mapping solutions when considering only symmetry-breaking lattice
 /// deformations. Therefore, CASM also allows for keeping the k-best scoring
-/// lattice mapping solutions. To avoid keeping any solution, CASM also allows
-/// for specifying a "max_strain_cost" above which lattice mapping solutions are
-/// not kept.
+/// lattice mapping solutions. To avoid keeping any solution, the
+/// "map_X_struc[_Y]" methods also allow for specifying a "max_cost" above
+/// which mapping solutions are not kept.
 ///
-/// Atomic assignment
-/// -----------------
 ///
-/// Solving:
+/// ### Atomic assignment ###
 ///
-///     r1[i] + disp[i] = V^{N} * Q^{N} * r2[perm[i]] + trans
+/// The assignment portion of the structure mapping algorithm finds
+/// solutions \f$(p_i, \vec{t}, \vec{d}(i))\f$ of:
+/// \f[
+///     \vec{r_1}(i) + \vec{d}(i) = V * Q * \vec{r_2}(p_i) + \vec{t}
+/// \f]
 ///
-/// r1: Vector of coordinates of atoms in the parent superstructure. The value
-///     `r1[i]` represents the Cartesian coordinate of the i-th atom in the
-///     parent structure.
-/// r2: Vector of coordinates of atoms in the unmapped child superstructure.
-///     The value `r2[i]` represents the Cartesian coordinate of the i-th atom
-///     in the unmapped child structure.
-/// V^{N}, Q^{N}: Lattice transformation, from the unmapped child superlattice
-///     to the parent superlattice, as determined by a solution to the lattice
-///     mapping problem.
-/// perm: Vector of indices that specifies a permutation, a mapping of atoms in
-///     the child structure to atomic sites in the parent structure. If we
-///     define `j = perm[i]`, this indicates that atom 'j' of the child
-///     superstructure maps onto site 'i' of the parent superstructure.  If the
-///     parent superstructure has N sites and child has M<N atoms, vacancies
-///     are designated by values j>=M.
-/// trans: A rigid translation, in Cartesian coordinates, of the de-rotated and
-///     undeformed (mapped) child superstructure that minimizes the atomic
-///     deformation cost.
-/// disp: Displacement associated with the atom on site `i` of the parent
-///     superstructure.
+/// where:
+/// - \f$\vec{r_1}(i)\f$: Vector of coordinates of atoms in the parent
+///   superstructure. The value \f$\vec{r_1}(i)\f$ represents the Cartesian
+///   coordinate of the \f$i\f$-th atom in the parent structure. The parent
+///   superstructure is not returned directly as part of the mapping results,
+///   but it can be constructed using:
+///
+///       xtal::Simpletructure parent_superstructure = make_superstructure(
+///           mapping.parent.transformation_matrix_to_super(), this->parent());
+///
+///   Then the \f$i\f$-th atom coordinate, \f$\vec{r_1}(i)\f$, is equal to:
+///
+///       parent_superstructure.atom_info.coords.col(i)
+///
+/// - \f$\vec{r_2}(i)\f$: Vector of coordinates of atoms in the unmapped child
+///   superstructure. The value \f$\vec{r_1}(i)\f$ represents the Cartesian
+///   coordinate of the \f$i\f$-th atom in the unmapped child structure.
+/// - \f$V * Q\f$: Lattice transformation, from the unmapped child superlattice
+///   to the parent superlattice, as determined by a solution to the lattice
+///   mapping problem.
+/// - \f$p_i\f$: A permutation vector, describes which atom in the unmapped
+///   structure (\f$p_i\f$) is mapped to the i-th site of the mapped structure.
+///   Values of \f$p_i\f$ greater than the number of atoms in the unmapped
+///   structure indicate inferred vacancies.
+/// - \f$\vec{t}\f$: A translation vector, in Cartesian coordinates, of the de-
+///   rotated and undeformed (mapped) child superstructure that minimizes the
+///   atomic deformation cost.
+/// - \f$\vec{d}(i)\f$: The displacement associated with the atom at the i-th
+///   site in parent superstructure.
 ///
 /// In general, given a lattice mapping solution, the assignment problem is
 /// solved using the following steps:
@@ -962,23 +1223,23 @@ bool MappingNode::operator<(MappingNode const &B) const {
 /// 2) Use the Hungarian Method to find the optimal assignment permutation,
 /// specifying the cost of assignment as infinite if atom type is not allowed
 /// on the parent superstructure site, otherwise with a cost based on either
-/// geometric distance or symmetry-breaking distance. See `?` for more details
-/// on the atomic deformation cost calculations.
+/// geometric distance or symmetry-breaking distance. See atomic_cost for more
+/// details on the atomic deformation cost calculations.
 ///
 /// 3) After the optimal assignment is determined, subtract the average
 /// displacement from the initial proposed  translation (checking that the
 /// average total displacement is zero and performing corrections for periodic
 /// boundary effects if this is not the case), and re-calculate the atomic
 /// deformation cost using the same assignment. This results in an optimal
-/// assignment solution (perm, trans).
+/// assignment solution \f$(p_i, \vec{t}, \vec{d}(i))\f$.
 ///
 /// Sub-optimal solutions: As with lattice mapping, sub-optimal assingment
 /// solutions may be required. In this case, Murty's algorithm is applied (which
 /// systematically forces some assignments) to enumerate the k-best assignment
-/// solutions (perm, trans).
+/// solutions \f$(p_i, \vec{t}, \vec{d}(i))\f$.
 ///
 ///
-/// --- Total mapping: ---
+/// ### Total mapping cost ###
 ///
 /// The optimal total mapping solution, a combination of a lattice mapping, and
 /// an assignment mapping calculated given that lattice mapping, is determined
@@ -992,16 +1253,18 @@ bool MappingNode::operator<(MappingNode const &B) const {
 
 //*******************************************************************************************
 
-StrucMapper::StrucMapper(
-    StrucMapCalculatorInterface const &calculator,
-    double _lattice_weight /*= 0.5*/, double _max_volume_change /*= 0.5*/,
-    int _options /*= robust*/,  // this should actually be a bitwise-OR of
-                                // StrucMapper::Options
-    double _cost_tol /*= TOL*/, double _min_va_frac /*= 0.*/,
-    double _max_va_frac /*= 1.*/)
+StrucMapper::StrucMapper(StrucMapCalculatorInterface const &calculator,
+                         double _lattice_weight /*= 0.5*/,
+                         double _max_volume_change /*= 0.5*/,
+                         bool _robust /*= false*/,
+                         bool _soft_va_limit /*= false*/,
+                         double _cost_tol /*= TOL*/,
+                         double _min_va_frac /*= 0.*/,
+                         double _max_va_frac /*= 1.*/)
     : m_calc_ptr(calculator.clone()),
       m_max_volume_change(_max_volume_change),
-      m_options(_options),
+      m_robust(_robust),
+      m_soft_va_limit(_soft_va_limit),
       m_cost_tol(max(1e-10, _cost_tol)),
       m_xtal_tol(TOL),
       m_lattice_transformation_range(1),
@@ -1034,20 +1297,20 @@ Index StrucMapper::_n_species(SimpleStructure const &sstruc) const {
 /// - max_va_frac
 /// - parent structure
 /// - child structure
-/// - options() & StrucMapper::soft_va_limit
+/// - soft_va_limit
 ///
 std::pair<Index, Index> StrucMapper::_vol_range(
-    const SimpleStructure &child_struc) const {
+    const SimpleStructure &unmapped_child) const {
   Index min_vol(0), max_vol(0);
   // mapped_result.clear();
-  SimpleStructure::Info const &c_info(calculator().struc_info(child_struc));
+  SimpleStructure::Info const &c_info(calculator().struc_info(unmapped_child));
 
   // Using _n_species() instead of parent().n_mol() here.
   // For mapping molecules, may need to push this entire routine into the
   // StrucMapCalculator?
   double N_sites_p = double(_n_species(parent()));
 
-  double N_sites_c = double(_n_species(child_struc));
+  double N_sites_c = double(_n_species(unmapped_child));
 
   if (calculator().fixed_species().size() > 0) {
     std::string tcompon = calculator().fixed_species().begin()->first;
@@ -1094,7 +1357,7 @@ std::pair<Index, Index> StrucMapper::_vol_range(
       // Nvol is approximate integer volume-- assume that actual integer is
       // within m_max_volume_change*100% of this volume, and use it to tighten
       // our bounds
-      double Nvol = (std::abs(child_struc.lat_column_mat.determinant() /
+      double Nvol = (std::abs(unmapped_child.lat_column_mat.determinant() /
                               parent().lat_column_mat.determinant()));
       min_vol = min(
           max_vol, max<Index>(round((1.0 - m_max_volume_change) * double(Nvol)),
@@ -1106,7 +1369,7 @@ std::pair<Index, Index> StrucMapper::_vol_range(
   }
 
   // make sure volume range is above zero
-  if (options() & StrucMapper::soft_va_limit) {
+  if (m_soft_va_limit) {
     Index smallest_possible_vol = ceil((N_sites_c - 0.5) / N_sites_p);
     min_vol = max<Index>(min_vol, smallest_possible_vol);
     max_vol = max<Index>(max_vol, smallest_possible_vol);
@@ -1126,13 +1389,14 @@ SimpleStructure const &StrucMapper::parent() const {
 /// \brief Calculate min_vol, max_vol range from min_va_frac, max_va_frac, and
 /// properties of the child and parent structures and calculator.
 std::set<MappingNode> StrucMapper::_seed_from_vol_range(
-    SimpleStructure const &child_struc, Index k, Index min_vol, Index max_vol,
-    double max_lattice_cost, double min_lattice_cost,
+    SimpleStructure const &unmapped_child, Index k, Index min_vol,
+    Index max_vol, double max_lattice_cost, double min_lattice_cost,
     SymOpVector const &child_factor_group) const {
   if (!valid_index(min_vol) || !valid_index(max_vol) || max_vol < min_vol) {
-    auto vol_range = _vol_range(child_struc);
-    min_vol = vol_range.first;
-    max_vol = vol_range.second;
+    std::stringstream msg;
+    msg << "Error in StrucMapper: invalid volume range [" << min_vol << ","
+        << max_vol << "]";
+    throw std::runtime_error(msg.str());
   }
 
   // There is nothing to enumerate, don't even bother.
@@ -1142,7 +1406,7 @@ std::set<MappingNode> StrucMapper::_seed_from_vol_range(
   // Ensure that you don't try to enumerate size zero supercells
   min_vol = std::max(min_vol, Index{1});
 
-  Lattice child_lat(child_struc.lat_column_mat, xtal_tol());
+  Lattice child_lat(unmapped_child.lat_column_mat, xtal_tol());
   std::set<MappingNode> mapping_seed;
   for (Index i_vol = min_vol; i_vol <= max_vol; i_vol++) {
     std::vector<Lattice> lat_vec;
@@ -1154,8 +1418,9 @@ std::set<MappingNode> StrucMapper::_seed_from_vol_range(
     }
 
     std::set<MappingNode> t_seed = _seed_k_best_from_super_lats(
-        child_struc, lat_vec, {Lattice(child_struc.lat_column_mat, xtal_tol())},
-        k, max_lattice_cost, max(min_lattice_cost, cost_tol()),
+        unmapped_child, lat_vec,
+        {Lattice(unmapped_child.lat_column_mat, xtal_tol())}, k,
+        max_lattice_cost, max(min_lattice_cost, cost_tol()),
         child_factor_group);
 
     mapping_seed.insert(std::make_move_iterator(t_seed.begin()),
@@ -1193,7 +1458,7 @@ std::set<MappingNode> StrucMapper::_seed_from_vol_range(
 ///   `soft_va_limit`, `add_allowed_lattice`, and `set_filter` have no effect.
 /// - All assignment is the same as in `map_deformed_struc`.
 ///
-/// \param child_struc Input structure to be mapped onto parent structure
+/// \param unmapped_child Input structure to be mapped onto parent structure
 /// \param k Number of k-best mapping relations to return
 /// \param max_cost Search will terminate once no mappings better than
 ///     max_cost are found
@@ -1204,20 +1469,20 @@ std::set<MappingNode> StrucMapper::_seed_from_vol_range(
 ///     otherwise they are discarded
 ///
 std::set<MappingNode> StrucMapper::map_ideal_struc(
-    const SimpleStructure &child_struc, Index k,
+    const SimpleStructure &unmapped_child, Index k,
     double max_cost /*=StrucMapping::big_inf()*/, double min_cost /*=-TOL*/,
     bool keep_invalid /*=false*/) const {
   // xtal::is_superlattice isn't very smart right now, and will return
   // false if the two lattices differ by a rigid rotation
-  // In the future this may not be the case, so we will assume that child_struc
-  // may be rigidly rotated relative to prim
+  // In the future this may not be the case, so we will assume that
+  // unmapped_child may be rigidly rotated relative to prim
   Eigen::Matrix3d trans_mat;
 
   // c_lat must be an ideal supercell of the parent lattice, but it need not be
   // canonical We will account for the difference in orientation between c_lat
   // and the canonical supercell, which must be related by a point group
   // operation
-  Lattice c_lat(child_struc.lat_column_mat, xtal_tol());
+  Lattice c_lat(unmapped_child.lat_column_mat, xtal_tol());
 
   bool c_lat_is_supercell_of_parent;
   std::tie(c_lat_is_supercell_of_parent, trans_mat) = xtal::is_superlattice(
@@ -1226,8 +1491,8 @@ std::set<MappingNode> StrucMapper::map_ideal_struc(
     return {};
   }
 
-  // We know child_struc.lattice() is a supercell of the prim, now we have to
-  // reorient 'child_struc' by a point-group operation of the parent to match
+  // We know unmapped_child.lattice() is a supercell of the prim, now we have to
+  // reorient 'unmapped_child' by a point-group operation of the parent to match
   // canonical lattice vectors This may not be a rotation in the child
   // structure's point group
   Lattice derot_c_lat(canonical::equivalent(
@@ -1242,12 +1507,12 @@ std::set<MappingNode> StrucMapper::map_ideal_struc(
       calculator().point_group().end(), xtal_tol());
   LatticeNode lattice_node(
       Lattice(parent().lat_column_mat, xtal_tol()), derot_c_lat, c_lat,
-      Lattice(child_struc.lat_column_mat * res.second.cast<double>(),
+      Lattice(unmapped_child.lat_column_mat * res.second.cast<double>(),
               xtal_tol()),
-      _n_species(child_struc), 0. /*strain_cost is zero in ideal case*/);
+      _n_species(unmapped_child), 0. /*strain_cost is zero in ideal case*/);
 
   return map_deformed_struc_impose_lattice_node(
-      child_struc, lattice_node, k, max_cost, min_cost, keep_invalid);
+      unmapped_child, lattice_node, k, max_cost, min_cost, keep_invalid);
 }
 
 //*******************************************************************************************
@@ -1316,7 +1581,7 @@ std::set<MappingNode> StrucMapper::map_ideal_struc(
 /// solutions (perm, trans).
 /// - Suboptimal candidates are generated based on the initial atomic mapping
 ///
-/// \param child_struc Input structure to be mapped onto parent structure
+/// \param unmapped_child Input structure to be mapped onto parent structure
 /// \param k Number of k-best mapping relations to return
 /// \param max_cost Search will terminate once no mappings better than
 /// max_cost are found
@@ -1331,13 +1596,13 @@ std::set<MappingNode> StrucMapper::map_ideal_struc(
 /// \result std::set<MappingNode> a list of valid mappings, sorted first by
 /// cost, and then other attributes
 std::set<MappingNode> StrucMapper::map_deformed_struc(
-    const SimpleStructure &child_struc, Index k /*=1*/,
+    const SimpleStructure &unmapped_child, Index k /*=1*/,
     double max_cost /*=StrucMapping::big_inf()*/, double min_cost /*=-TOL*/,
     bool keep_invalid /*=false*/, SymOpVector const &child_factor_group) const {
-  auto vols = _vol_range(child_struc);
+  auto vols = _vol_range(unmapped_child);
   return map_deformed_struc_impose_lattice_vols(
-      child_struc, vols.first, vols.second, k, max_cost, min_cost, keep_invalid,
-      child_factor_group);
+      unmapped_child, vols.first, vols.second, k, max_cost, min_cost,
+      keep_invalid, child_factor_group);
 }
 
 //*******************************************************************************************
@@ -1350,17 +1615,13 @@ std::set<MappingNode> StrucMapper::map_deformed_struc(
 /// - The inclusive range [min_vol, max_vol] of candidate parent superlattice
 ///   volumes can be specified directly by `min_vol` and `max_vol`.
 /// - If invalid values of `min_vol` or `max_vol` are provided (negative values
-///   or max_vol < min_vol), then this method is equivalent to
-///   `map_deformed_struc` and they are calculated to be consistent with
-///   `min_va_frac`, `max_va_frac`, `max_volume_change`, the parent structure
-///   and allowed species, the child structure, and `soft_va_limit`.
-/// - If valid values of `min_vol` or `max_vol` are provided, then
-///   `min_va_frac`, `max_va_frac`, `max_volume_change`, and `soft_va_limit`
-///   are ignored.
+///   or max_vol < min_vol), then this method throws.
+/// - Parameters `min_va_frac`, `max_va_frac`, `max_volume_change`,
+///   and `soft_va_limit` have no effect.
 /// - Constraints set by `add_allowed_lattice` and `set_filter` are still in
 ///   effect, and all assignment is the same as in `map_deformed_struc`.
 ///
-/// \param child_struc Input structure to be mapped onto parent structure
+/// \param unmapped_child Input structure to be mapped onto parent structure
 /// \param min_vol,max_vol The inclusive range [min_vol, max_vol] of candidate
 ///      parent superlattice volumes considered.
 /// \param k Number of k-best mapping relations to return
@@ -1375,18 +1636,18 @@ std::set<MappingNode> StrucMapper::map_deformed_struc(
 ///     default.
 ///
 std::set<MappingNode> StrucMapper::map_deformed_struc_impose_lattice_vols(
-    const SimpleStructure &child_struc, Index min_vol, Index max_vol,
+    const SimpleStructure &unmapped_child, Index min_vol, Index max_vol,
     Index k /*=1*/, double max_cost /*=StrucMapping::big_inf()*/,
     double min_cost /*=-TOL*/, bool keep_invalid /*=false*/,
     SymOpVector const &child_factor_group) const {
   int seed_k = 10 + 5 * k;
   std::set<MappingNode> mapping_seed = _seed_from_vol_range(
-      child_struc, seed_k, min_vol, max_vol,
+      unmapped_child, seed_k, min_vol, max_vol,
       max_cost / (this->lattice_weight()),
       max(min_cost / (this->lattice_weight()), cost_tol()), child_factor_group);
 
-  bool no_partition = (!(robust & options())) && k <= 1;
-  k_best_maps_better_than(child_struc, mapping_seed, k, max_cost, min_cost,
+  bool no_partition = !m_robust && k <= 1;
+  k_best_maps_better_than(unmapped_child, mapping_seed, k, max_cost, min_cost,
                           keep_invalid, false, no_partition);
 
   return mapping_seed;
@@ -1410,7 +1671,7 @@ std::set<MappingNode> StrucMapper::map_deformed_struc_impose_lattice_vols(
 ///   not be \f$I\f$.)
 /// - All assignment is the same as in `map_deformed_struc`.
 ///
-/// \param child_struc Input structure to be mapped onto parent structure
+/// \param unmapped_child Input structure to be mapped onto parent structure
 /// \param imposed_lat The imposed parent superlattice, `imposed_lat` = \f$L1 *
 ///     T1\f$.
 /// \param k Number of k-best mapping relations to return
@@ -1425,18 +1686,18 @@ std::set<MappingNode> StrucMapper::map_deformed_struc_impose_lattice_vols(
 ///     default.
 ///
 std::set<MappingNode> StrucMapper::map_deformed_struc_impose_lattice(
-    const SimpleStructure &child_struc, const Lattice &imposed_lat,
+    const SimpleStructure &unmapped_child, const Lattice &imposed_lat,
     Index k /*=1*/, double max_cost /*=StrucMapping::big_inf()*/,
     double min_cost /*=-TOL*/, bool keep_invalid /*=false*/,
     SymOpVector const &child_factor_group) const {
   std::set<MappingNode> mapping_seed = _seed_k_best_from_super_lats(
-      child_struc, {imposed_lat},
-      {Lattice(child_struc.lat_column_mat, xtal_tol())}, k,
+      unmapped_child, {imposed_lat},
+      {Lattice(unmapped_child.lat_column_mat, xtal_tol())}, k,
       max_cost / (this->lattice_weight()),
       max(min_cost / (this->lattice_weight()), cost_tol()), child_factor_group);
 
-  bool no_partition = !(robust & options()) && k <= 1;
-  k_best_maps_better_than(child_struc, mapping_seed, k, max_cost, min_cost,
+  bool no_partition = !m_robust && k <= 1;
+  k_best_maps_better_than(unmapped_child, mapping_seed, k, max_cost, min_cost,
                           keep_invalid, false, no_partition);
   return mapping_seed;
 }
@@ -1450,7 +1711,7 @@ std::set<MappingNode> StrucMapper::map_deformed_struc_impose_lattice(
 ///   `soft_va_limit`, `add_allowed_lattice`, and `set_filter` have no effect.
 /// - All assignment is the same as in `map_deformed_struc`.
 ///
-/// \param child_struc Input structure to be mapped onto parent structure
+/// \param unmapped_child Input structure to be mapped onto parent structure
 /// \param imposed_node The imposed lattice mapping, encodes \f$T_1, N, F^{N\f$
 ///     in the lattice mapping relationship \f$L_1 * T_1 * N = F^{N} * L_2\f$,
 ///     along with the lattice deformation cost.
@@ -1466,13 +1727,13 @@ std::set<MappingNode> StrucMapper::map_deformed_struc_impose_lattice(
 ///     default.
 ///
 std::set<MappingNode> StrucMapper::map_deformed_struc_impose_lattice_node(
-    const SimpleStructure &child_struc, const LatticeNode &imposed_node,
+    const SimpleStructure &unmapped_child, const LatticeNode &imposed_node,
     Index k /*=1*/, double max_cost /*=StrucMapping::big_inf()*/,
     double min_cost /*=-TOL*/, bool keep_invalid /*=false*/) const {
   std::set<MappingNode> mapping_seed;
   mapping_seed.emplace(imposed_node, m_lattice_weight);
-  bool no_partition = !(robust & options()) && k <= 1;
-  k_best_maps_better_than(child_struc, mapping_seed, k, max_cost, min_cost,
+  bool no_partition = !m_robust && k <= 1;
+  k_best_maps_better_than(unmapped_child, mapping_seed, k, max_cost, min_cost,
                           keep_invalid, false, no_partition);
   return mapping_seed;
 }
@@ -1534,7 +1795,7 @@ std::vector<Lattice> StrucMapper::_lattices_of_vol(Index prim_vol) const {
 /// At the end of the process, the queue may be pruned depending on the choice
 /// of input parameters.
 ///
-///\param child_struc Input structure to be mapped onto parent structure
+///\param unmapped_child Input structure to be mapped onto parent structure
 ///\param queue
 ///\parblock
 ///  List of partial mappings (i.e., MappingNode with LatticeNode only) to
@@ -1563,10 +1824,10 @@ std::vector<Lattice> StrucMapper::_lattices_of_vol(Index prim_vol) const {
 /// solution set
 ///
 Index StrucMapper::k_best_maps_better_than(
-    SimpleStructure const &child_struc, std::set<MappingNode> &queue, Index k,
-    double max_cost /*=StrucMapping::big_inf()*/, double min_cost /*=-TOL*/,
-    bool keep_invalid /*=false*/, bool keep_tail /*= false*/,
-    bool no_partition /*= false*/) const {
+    SimpleStructure const &unmapped_child, std::set<MappingNode> &queue,
+    Index k, double max_cost /*=StrucMapping::big_inf()*/,
+    double min_cost /*=-TOL*/, bool keep_invalid /*=false*/,
+    bool keep_tail /*= false*/, bool no_partition /*= false*/) const {
   int nfound = 0;
   // Track pairs of supercell volumes that are chemically incompatible
   std::set<std::pair<Index, Index>> vol_mismatch;
@@ -1595,9 +1856,9 @@ Index StrucMapper::k_best_maps_better_than(
           //         current (new node must have cost greather than the current
           //         node, so will
           //          appear later in the queue)
-          if (!Local::initial_atomic_maps(child_struc, *current, calculator(),
-                                          max_cost, symmetrize_atomic_cost(),
-                                          std::inserter(queue, current))) {
+          if (!Local::initial_atomic_maps(
+                  unmapped_child, *current, calculator(), max_cost,
+                  symmetrize_atomic_cost(), std::inserter(queue, current))) {
             // If no basis maps are viable, it indicates volume mismatch; add to
             // vol_mismatch
             vol_mismatch.insert(current->vol_pair());
@@ -1628,7 +1889,7 @@ Index StrucMapper::k_best_maps_better_than(
           // caller has asked not to
           if (nfound < k || current->cost <= min_cost) {
             if (!(no_partition || current->is_partitioned)) {
-              Local::partition_node(*current, calculator(), child_struc,
+              Local::partition_node(*current, calculator(), unmapped_child,
                                     symmetrize_atomic_cost(),
                                     std::inserter(queue, current));
             }
@@ -1671,14 +1932,14 @@ Index StrucMapper::k_best_maps_better_than(
 /// Note:
 /// - This method ignores min_va_frac, max_va_frac,
 std::set<MappingNode> StrucMapper::_seed_k_best_from_super_lats(
-    SimpleStructure const &child_struc,
+    SimpleStructure const &unmapped_child,
     std::vector<Lattice> const &_parent_scels,
     std::vector<Lattice> const &_child_scels, Index k,
     double max_lattice_cost /*=StrucMapping::small_inf()*/,
     double min_lattice_cost /*=1e-6*/,
     SymOpVector const &child_factor_group) const {
   Lattice p_prim_lat(parent().lat_column_mat, xtal_tol());
-  Lattice c_prim_lat(child_struc.lat_column_mat, xtal_tol());
+  Lattice c_prim_lat(unmapped_child.lat_column_mat, xtal_tol());
   std::set<MappingNode> result;
 
   if (k == 0 || !valid_index(k)) {
@@ -1693,8 +1954,6 @@ std::set<MappingNode> StrucMapper::_seed_k_best_from_super_lats(
     }
 
     for (Lattice const &p_lat : _parent_scels) {
-      int n_child_atom = round(std::abs(volume(c_lat) / volume(c_prim_lat))) *
-                         _n_species(child_struc);
       LatticeMap lattice_map(p_lat, c_lat, this->lattice_transformation_range(),
                              calculator().point_group(), c_lat_factor_group,
                              max_lattice_cost, symmetrize_lattice_cost(),
@@ -1715,41 +1974,8 @@ std::set<MappingNode> StrucMapper::_seed_k_best_from_super_lats(
             k--;
           }
         }
-
-        // TODO: remove
-        check_equal(c_lat.lat_column_mat(),
-                    lattice_map.deformation_gradient() *
-                        p_lat.lat_column_mat() * lattice_map.matrixN(),
-                    "LatticeMap mapping");
-
         LatticeNode lattice_node{lattice_map, p_prim_lat, c_prim_lat};
-
-        // TODO: remove
-        // lattice_node.unmapped_child = Superlattice{c_prim_lat, c_lat};
-        //
-        // auto const &unmapped_child = child_struc;
-        //
-        // check_equal(
-        //     lattice_node.unmapped_child.value().prim_lattice().lat_column_mat(),
-        //     unmapped_child.lat_column_mat, "StrucMapper check -3");
-        //
-        // check_equal(lattice_node.parent.superlattice().lat_column_mat(),
-        //             lattice_node.stretch * lattice_node.isometry *
-        //                 lattice_node.unmapped_child.value()
-        //                     .superlattice()
-        //                     .lat_column_mat(),
-        //             "StrucMapper check -2");
-        //
-        // check_equal(lattice_node.parent.superlattice().lat_column_mat(),
-        //             lattice_node.stretch * lattice_node.isometry *
-        //                 unmapped_child.lat_column_mat *
-        //                 lattice_node.unmapped_child.value()
-        //                     .transformation_matrix_to_super()
-        //                     .cast<double>(),
-        //             "StrucMapper check 0");
-
         result.emplace(lattice_node, this->lattice_weight());
-
         lattice_map.next_mapping_better_than(max_lattice_cost);
       }
     }

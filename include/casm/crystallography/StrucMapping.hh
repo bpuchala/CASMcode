@@ -34,14 +34,13 @@ namespace StrucMapping {
 // - Pass all StrucMapper parameters via constructor or via
 // `map_X` function call and remove StrucMapper parameter modifiers such as
 // `StrucMapper::set_filter` or `StrucMapper::set_max_va_frac`.
-// - Remove StrucMapping::Options, only robust and soft_va_limit seems to
-// still be in use
 // - Find an alternative to the use of StrucMapCalculatorInterface, or reduce
 // it to only the virtual members and make it optional.
 // - Document more explicitly the conversion of std::set<MappingNode> results
 // to SymOpVector
 // - Document use of k=0 mapping
-// - Consider 'isometry' vs 'rigid_rotation' etc.
+// - Consider 'isometry' vs 'rigid_rotation' vs.
+//   'distance_preserving_transformation' etc.
 
 /// Lattice filter function for structure mapping
 ///
@@ -116,7 +115,7 @@ struct LatticeNode {  // Note: See full description in StrucMapping.cc
   /// parent superlattice.
   Eigen::Matrix3d stretch;
 
-  /// \brief The isometry (rigid transformation) matrix
+  /// \brief The isometry (distance-preserving transformation) matrix
   ///
   /// This is \f$Q^{N}\f$, the isometry matrix, which describes a rigid
   /// transformation that de-rotates (de-reflects, etc.) a superlattice of
@@ -195,83 +194,105 @@ bool less(LatticeNode const &A, LatticeNode const &B, double cost_tol);
 /// transformations are same for A and B
 bool identical(LatticeNode const &A, LatticeNode const &B, double cost_tol);
 
-/// \brief Structure to encode the solution of a constrained atomic assignmnet
-/// problem This describes the permutation, translation, and time-reversal of
+/// \brief Atomic assignment solution data structure
+///
+/// AssignmentNode holds the solution of a constrained atomic assignmnet
+/// problem. This describes the permutation, translation, and time-reversal of
 /// the atoms of a child structure to bring them into registration with the
 /// atoms of a parent structure (assuming periodic boundary conditions). Also
 /// records the constrained and unconstrained assignment costs
 struct AssignmentNode {
+  /// Constructor
+  ///
+  /// \param _cost_tol The cost comparison tolerance
+  ///
   AssignmentNode(double _cost_tol = 1e-6)
       : time_reversal(false), cost(0), m_cost_tol(_cost_tol) {}
 
   /// \brief Mapping translation from child to parent
+  ///
   /// Defined such that
-  ///   translation=parent_coord.col(i)-child_coord.col(permutation[i])+displacement.col(i)
-  ///   (for each 'i', modulo a lattice translation)
+  ///
+  ///     translation = parent_coord.col(i)-
+  ///         child_coord.col(permutation[i]) + displacement.col(i)
+  ///
+  /// where coordinate comparisons must be made checking for equality up to a
+  /// lattice translation.
+  ///
   /// This definition assumes that 'child_coord' has been de-rotated and
   /// un-deformed according to a particular lattice mapping (as defined by a
   /// LatticeNode object)
   Eigen::Vector3d translation;
 
-  /// \brief time_reversal relationship between child and parent
+  /// \brief Time reversal relationship between child and parent
   bool time_reversal;
 
-  /// \brief parent->child site assignments that have been forced on at this
-  /// node for element 'el' such that forced_on.count(el)==1, 'el' denotes that
-  /// child_coord.col(el.second) maps onto parent_coord.col(el.first)
+  /// \brief Parent-to-child site assignments that have been forced on.
+  ///
+  /// Defined such that forced_on.count(el)==1 denotes that
+  /// child_coord.col(el.second) maps onto parent_coord.col(el.first).
   std::set<std::pair<Index, Index>> forced_on;
 
-  /// \brief 'real' indices of rows in the reduced 'cost_mat'
+  /// \brief 'Real' indices of rows in the reduced 'cost_mat'
+  ///
   /// When a site assignment {i,j} is added to forced_on, row 'i' and col 'j'
-  /// are removed from cost_mat An element cost_mat(k,l) in the 'cost_mat'
+  /// are removed from cost_mat. An element cost_mat(k,l) in the cost_mat
   /// corresponds to the original element at (irow[k],icol[l]) in the original
-  /// cost_mat
+  /// cost_mat.
   std::vector<Index> irow;
 
-  /// \brief 'real' indices of columns in the reduced 'cost_mat'
+  /// \brief 'Real' indices of columns in the reduced 'cost_mat'
+  ///
   /// When a site assignment {i,j} is added to forced_on, row 'i' and col 'j'
-  /// are removed from cost_mat An element cost_mat(k,l) in the 'cost_mat'
+  /// are removed from cost_mat. An element cost_mat(k,l) in the cost_mat
   /// corresponds to the original element at (irow[k],icol[l]) in the original
-  /// cost_mat
+  /// cost_mat.
   std::vector<Index> icol;
 
   /// \brief Solution of the assignment problem for the reduced 'cost_mat'
-  /// An assignment {k,l} in the reduced problem occurs when assignment[k]==l
-  /// In the unreduced problem, this assignment corresponds to {irow[k],icol[l]}
+  ///
+  /// An assignment {k,l} in the reduced problem occurs when assignment[k]==l.
+  /// In the unreduced problem, this assignment corresponds to
+  /// {irow[k],icol[l]}.
   std::vector<Index> assignment;
 
-  /// \brief Cost matrix for an assignment problem, which may be a reduced
-  /// assignment problem if forced_on.size()>0 cost_mat(i,j) is the cost of
-  /// mapping child site 'j' onto parent atom 'i'. If parent structure allows
-  /// vacancies cost_mat may have more columns than child sites. These
-  /// correspond to 'virtual vacancies', which have zero cost of mapping onto a
-  /// parent site that allows vacancies and infinite cost of mapping onto a
-  /// parent site that does not allow vacancies. In the case of a reduced
-  /// assignment problem, cost_mat.cols()=icol.size() and
-  /// cost_mat.rows()=irow.size()
+  /// \brief Cost matrix for an assignment problem
+  ///
+  /// - If the parent structure allows vacancies, cost_mat may have more
+  /// columns than child sites. These correspond to 'virtual vacancies', which
+  /// have zero cost of mapping onto a parent site that allows vacancies and
+  /// an infinite cost of mapping onto a parent site that does not allow
+  /// vacancies.
+  /// - This may be a reduced assignment problem. If forced_on.size()>0, then
+  /// cost_mat(i,j) is the cost of mapping child site 'j' onto parent atom 'i'.
+  /// - In the case of a reduced assignment problem,
+  ///   cost_mat.cols()=icol.size() and cost_mat.rows()=irow.size()
   Eigen::MatrixXd cost_mat;
 
-  /// \brief Total cost of best solution to the constrained assignment problem
-  /// having some forced_on assignments
+  /// \brief Total cost of best solution to the constrained assignment problem,
+  /// possibly having some forced_on assignments
   double cost;
 
-  /// Name of the method used to calculate the atomic displacement cost
+  /// \brief Name of the method used to calculate the atomic displacement cost
   std::string cost_method;
 
+  /// \brief Return cost comparison tolerance
   double cost_tol() const { return m_cost_tol; }
 
   /// \brief True if cost matrix and assignment vector are uninitialized
   bool empty() const { return cost_mat.size() == 0 && assignment.empty(); }
 
   /// \brief Compares time_reversal and translation
-  /// for time_reversal, false is less than true
-  /// for translation, elements are compared lexicographically
+  ///
+  /// - For time_reversal, false is less than true.
+  /// - For translation, elements are compared lexicographically
   bool operator<(AssignmentNode const &other) const;
 
   /// \brief Combines constrained vector HungarianNode::assignment and
   /// HungarianNode::forced_on to obtain total permutation vector.
-  /// child_struc_after.site[i] after assignment is given by
-  /// child_struc_before.site[result[i]] before assignment
+  ///
+  /// The value of child_after.site[i] after assignment is given by
+  /// child_before.site[result[i]] before assignment.
   std::vector<Index> permutation() const {
     std::vector<Index> result(assignment.size() + forced_on.size(), 0);
     for (auto const &pair : forced_on) {
@@ -301,32 +322,49 @@ struct MappingNode {  // Note: See full description in StrucMapping.cc
   using Displacement = DisplacementMatrix::ColXpr;
   using ConstDisplacement = DisplacementMatrix::ConstColXpr;
 
-  // Label molecules as name and occupant index (optional, default 0)
+  /// Label molecules as name and occupant index
   using MoleculeLabel = std::pair<std::string, Index>;
 
   using AtomIndexSet = std::set<Index>;
-
   using MoleculeMap = std::vector<AtomIndexSet>;
 
+  /// \brief Contains lattice mapping results
   LatticeNode lattice_node;
+
+  /// \brief Contains atomic assignment results
   AssignmentNode atomic_node;
+
+  /// \brief Component of total cost due to lattice mapping cost
   double lattice_weight;
+
+  /// \brief Component of total cost due to atomic assignment cost
   double atomic_weight;
 
-  /// \brief true if assignment problem is not yet known to be insoluable --
-  /// default true
+  /// \brief True if assignment problem is not yet known to be insoluable
+  ///
+  /// - Used during structure mapping algorithm
+  /// - Default: true
   bool is_viable;
 
-  /// \brief true if assignment has been checked for physical validity and
-  /// passes -- default false
+  /// \brief True if assignment is valid
+  ///
+  /// - Specifies that all atoms are assigned to sites where that atom type is
+  /// allowed
+  /// - Default before checking is false
   mutable bool is_valid;
 
-  /// \brief true if node has been partitioned into sub-nodes for generalized
-  /// k-best assignment problem -- default false
+  /// \brief True if node has been partitioned
+  ///
+  /// - Used during structure mapping algorithm
+  /// - Partitioning into sub-nodes to find sub-optimal assignment solutions is
+  /// performed as part of the generalized k-best assignment problem
+  /// - Default: false
   mutable bool is_partitioned;
 
-  /// \brief total, finalized cost, populated by a StrucMapCalculator.
-  /// Not guaranteed to be a linear function of lattice_node.cost and
+  /// \brief Total solution cost, including lattice and atomic costs
+  ///
+  /// - Populated by a StrucMapCalculator
+  /// - Not guaranteed to be a linear function of lattice_node.cost and
   /// atomic_node.cost
   double cost;
 
@@ -337,28 +375,41 @@ struct MappingNode {  // Note: See full description in StrucMapping.cc
   /// are included, but set to Zero)
   Eigen::MatrixXd atom_displacement;
 
-  /// permutation lists indices of sites in input structure, as-read, so that
-  /// they constitute particular mapping onto parent structure.
-  /// If we define index j = atom_permutation[i], this indicates that atom 'j'
-  /// of the child superstructure maps onto site 'i' of parent superstructure If
-  /// parent has N sites and child has M<N atoms, vacancies are designated by
-  /// values j>=M
+  /// \brief Atom assignment solution as a permutation
+  ///
+  /// `atom_permutation` lists indices of sites in input structure, as-read, so
+  /// that they constitute particular mapping onto parent structure.
+  /// If we define index `j = atom_permutation[i]`, this indicates that atom `j`
+  /// of the child superstructure maps onto site `i` of parent superstructure.
+  /// If the parent structure has `N` sites and child has `M<N` atoms,
+  /// vacancies  are designated by values `j>=M`.
   std::vector<Index> atom_permutation;
 
+  /// \brief Mapping between atomic and molecular representation
+  ///
   /// mol_map[j] lists atom indices of parent superstructure that comprise the
   /// molecule at its j'th molecular site
+  ///
+  /// \note Currently only single atom molecules can be mapped, and the general
+  /// implementation is for future support.
   MoleculeMap mol_map;
 
-  /// A list of assigned molecule names as the pair {species_name, index in
-  /// allowed_species for the parent structure basis site it is mapped to}
+  /// \brief List of assigned molecule names
+  ///
+  /// Assigned molecule names, as the pair {species_name, occupant_index},
+  /// where occupant_index is the index into allowed_species for the parent
+  /// structure basis site the molecule is mapped to (index used for ConfigDoF
+  /// occupation).
   std::vector<MoleculeLabel> mol_labels;
 
-  /// \brief Static constructor to build an invalid MappingNode, can be used as
-  /// return value when no valid mapping exists
+  /// \brief Static constructor to build an invalid MappingNode
+  ///
+  /// - Can be used as return value when no valid mapping exists
   static MappingNode invalid();
 
-  /// \brief construct with lattice node and lattice_weight. Cost is initialized
-  /// assuming zero atomic_node cost
+  /// \brief Construct with lattice node and lattice_weight.
+  ///
+  /// - Cost is initialized assuming zero atomic_node cost
   MappingNode(LatticeNode _lattice_node, double _lattice_weight)
       : lattice_node(std::move(_lattice_node)),
         is_viable(true),
@@ -368,12 +419,18 @@ struct MappingNode {  // Note: See full description in StrucMapping.cc
     cost = lattice_weight * lattice_node.cost;
   }
 
+  /// \brief Tolerance used for cost comparison
   double cost_tol() const { return atomic_node.cost_tol(); }
 
-  /// \brief set the lattice_weight. Cost is calculated as
-  /// cost = lattice_weight*lattice_node.cost + atomic_weight*atomic_node.cost
-  /// lattice_weight must be on interval (0.,1.]; atomic_weight
-  /// is 1.-lattice_weight
+  /// \brief Set the lattice_weight
+  ///
+  /// Cost is calculated as:
+  ///
+  ///     cost = lattice_weight*lattice_node.cost +
+  ///            atomic_weight*atomic_node.cost
+  ///
+  /// where `lattice_weight` must be on interval `(0.,1.]`, and `atomic_weight`
+  /// is `1.-lattice_weight`.
   void set_lattice_weight(double _lw) {
     lattice_weight = max(min(_lw, 1.0), 1e-9);
     atomic_weight = 1. - lattice_weight;
@@ -386,39 +443,41 @@ struct MappingNode {  // Note: See full description in StrucMapping.cc
                                    lattice_node.child.size());
   }
 
-  /// \brief non-const calc method solves the assignment problem via
-  /// hungarian_method sets is_viable -> false if no solution
+  /// \brief Solves the assignment problem
+  ///
+  /// - Solves the assignment problem using hungarian_method
+  /// - Sets \link MappingNode::is_viable is_viable\endling to false if no
+  ///   solution
   void calc();
 
-  void clear() {
-    throw std::runtime_error("MappingNode::clear() not implemented");
-  }
-
-  /// \brief convenience method to access MappingNode::lattice_node.isometry
+  /// \brief Convenience method to access MappingNode::lattice_node.isometry
   Eigen::Matrix3d const &isometry() const { return lattice_node.isometry; }
 
-  /// \brief convenience method to access MappingNode::lattice_node.stretch
+  /// \brief Convenience method to access MappingNode::lattice_node.stretch
   Eigen::Matrix3d const &stretch() const { return lattice_node.stretch; }
 
-  /// \brief convenience method to access MappingNode::atomic_node.translation
+  /// \brief Convenience method to access MappingNode::atomic_node.translation
   Eigen::Vector3d const &translation() const { return atomic_node.translation; }
 
-  /// \brief convenience method to access MappingNode::atomic_node.time_reveral
+  /// \brief Convenience method to access MappingNode::atomic_node.time_reveral
   bool time_reversal() const { return atomic_node.time_reversal; }
 
-  /// \brief non-const access of i'th atomic displacement of mapped structure
+  /// \brief Access the i'th atomic displacement of mapped structure
   Displacement disp(Index i) { return atom_displacement.col(i); }
 
-  /// \brief const access i'th atomic displacement of mapped structure
+  /// \brief Access the i'th atomic displacement of mapped structure
   ConstDisplacement disp(Index i) const { return atom_displacement.col(i); }
 
-  /// Compares cost, lattice_node, atomic_node, and permutation
-  /// if costs are tied, compares lattice_node.cost
-  ///   if tied, uninitialized atomic_node comes before initialized atomic_node
-  ///   if tied, compares lattice_node, using defined comparator
-  ///   if tied, compares atomic_node, using defined comparator
-  ///   if tied, does lexicographic comparison of permutation
-  /// This order is essential for proper behavior of mapping algorithm
+  /// \brief Compares cost, lattice_node, atomic_node, and permutation
+  ///
+  /// If costs are tied, compares lattice_node.cost first, then:
+  /// - if tied, uninitialized atomic_node comes before initialized atomic_node
+  /// - if tied, compares lattice_node, using defined comparator
+  /// - if tied, compares atomic_node, using defined comparator
+  /// - if tied, does lexicographic comparison of permutation
+  ///
+  /// \note This order is essential for proper behavior of mapping algorithm
+  ///
   bool operator<(MappingNode const &other) const;
 };
 
@@ -445,18 +504,6 @@ class StrucMapper {
  public:
   using LatMapType = std::map<Index, std::vector<Lattice>>;
 
-  enum Options {
-    none = 0,
-    strict = (1u << 0),
-    robust = (1u << 1),
-    sym_strain = (1u << 2),
-    sym_basis = (1u << 3),
-    // soft_va_limit ensures that if no supercell volume satisfies vacancy
-    // constraints, the smallest possible volume is used. Default behavior
-    // results in no valid mapping
-    soft_va_limit = (1u << 4)
-  };
-
   ///\brief Construct and initialize a StrucMapper
   ///
   ///\param _calculator
@@ -481,22 +528,14 @@ class StrucMapper {
   ///          are allowed in parent structure
   ///\endparblock
   ///
-  ///\param _options
-  ///\parblock
-  ///          specify a combination of StrucMapper::Options using bitwise OR:
-  ///          Ex. _options=StrucMapper::robust|StrucMapper::strict Options are:
-  ///             'robust': does not assume the imported structure might be
-  ///             ideal ('robust' is much slower for importing ideal structures,
-  ///                       but if 'robust' is not set and a non-ideal structure
-  ///                       is passed, this will be almost always be detected
-  ///                       and robust methods will be used instead. Thus,
-  ///                       'robust' is slightly faster if imported Structures
-  ///                       are *not* ideal)
+  ///\param _robust Perform additional checks to determine if mapping is
+  /// degenerate in cost to other mappings, which can occur if the imported
+  /// structure has symmetry that is incompatible with parent structure.
+  /// Results in slower execution.
   ///
-  ///             'strict': prevents transformation into canonical form. Tries
-  ///             to preserve original orientation of imported structure if
-  ///             possible
-  ///\endparblock
+  ///\param _soft_va_limit If true, ensures that if no supercell volume
+  /// satisfies vacancy constraints, the smallest possible volume is used.
+  /// Default behavior results in no valid mapping.
   ///
   ///\param _cost_tol tolerance for mapping comparisons
   ///
@@ -507,8 +546,7 @@ class StrucMapper {
   /// mapping will not be considered
   StrucMapper(StrucMapCalculatorInterface const &_calculator,
               double _lattice_weight = 0.5, double _max_volume_change = 0.5,
-              int _options = 0,  // this should actually be a bitwise-OR of
-                                 // StrucMapper::Options
+              bool _robust = false, bool _soft_va_limit = false,
               double _cost_tol = TOL, double _min_va_frac = 0.,
               double _max_va_frac = 1.);
 
@@ -587,8 +625,11 @@ class StrucMapper {
   /// uniquely determined by the number of each species in the child structure
   void set_max_va_frac(double _max_va) { m_max_va_frac = min(_max_va, 0.99); }
 
-  /// \brief returns bit flag of selected options for this StrucMapper
-  int options() const { return m_options; }
+  /// \brief 'robust' option: see constructor for details
+  bool robust() const { return m_robust; }
+
+  /// \brief 'soft_va_limit' option: see constructor for details
+  bool soft_va_limit() const { return m_soft_va_limit; }
 
   /// \brief returns reference to parent structure
   SimpleStructure const &parent() const;
@@ -634,14 +675,14 @@ class StrucMapper {
   /// structure, assuming that the child lattice and parent lattice are related
   /// by an integer transformation and a parent structure point group operation
   std::set<MappingNode> map_ideal_struc(
-      const SimpleStructure &child_struc, Index k = 1,
+      const SimpleStructure &unmapped_child, Index k = 1,
       double max_cost = StrucMapping::big_inf(), double min_cost = -TOL,
       bool keep_invalid = false) const;
 
   /// \brief Find the k-best mappings of an arbitrary child structure onto the
   /// parent structure, without simplifying assumptions
   std::set<MappingNode> map_deformed_struc(
-      const SimpleStructure &child_struc, Index k = 1,
+      const SimpleStructure &unmapped_child, Index k = 1,
       double max_cost = StrucMapping::big_inf(), double min_cost = -TOL,
       bool keep_invalid = false,
       SymOpVector const &child_factor_group = {SymOp::identity()}) const;
@@ -650,7 +691,7 @@ class StrucMapper {
   /// parent structure, specifying the range of parent superlattice volumes
   /// considered
   std::set<MappingNode> map_deformed_struc_impose_lattice_vols(
-      const SimpleStructure &child_struc, Index min_vol, Index max_vol,
+      const SimpleStructure &unmapped_child, Index min_vol, Index max_vol,
       Index k = 1, double max_cost = StrucMapping::big_inf(),
       double min_cost = -TOL, bool keep_invalid = false,
       SymOpVector const &child_factor_group = {SymOp::identity()}) const;
@@ -659,7 +700,7 @@ class StrucMapper {
   /// parent structure, specifying the parent superlattice exactly, but not the
   /// way the child lattice maps to the parent superlattice
   std::set<MappingNode> map_deformed_struc_impose_lattice(
-      const SimpleStructure &child_struc, const Lattice &imposed_lat,
+      const SimpleStructure &unmapped_child, const Lattice &imposed_lat,
       Index k = 1, double max_cost = StrucMapping::big_inf(),
       double min_cost = -TOL, bool keep_invalid = false,
       SymOpVector const &child_factor_group = {SymOp::identity()}) const;
@@ -667,12 +708,12 @@ class StrucMapper {
   /// \brief Find the k-best mappings of an arbitrary child structure onto the
   /// parent structure, specifying the lattice mapping exactly
   std::set<MappingNode> map_deformed_struc_impose_lattice_node(
-      const SimpleStructure &child_struc, const LatticeNode &imposed_node,
+      const SimpleStructure &unmapped_child, const LatticeNode &imposed_node,
       Index k = 1, double max_cost = StrucMapping::big_inf(),
       double min_cost = -TOL, bool keep_invalid = false) const;
 
   /// Find k-best mappings
-  Index k_best_maps_better_than(SimpleStructure const &child_struc,
+  Index k_best_maps_better_than(SimpleStructure const &unmapped_child,
                                 std::set<MappingNode> &queue, Index k = 1,
                                 double max_cost = StrucMapping::big_inf(),
                                 double min_cost = -TOL,
@@ -687,7 +728,7 @@ class StrucMapper {
   /// LatticeNode only) from a list of supercells of the parent structure and
   /// a list of supercells of the child structure
   std::set<MappingNode> _seed_k_best_from_super_lats(
-      SimpleStructure const &child_struc,
+      SimpleStructure const &unmapped_child,
       std::vector<Lattice> const &_parent_scels,
       std::vector<Lattice> const &_child_scels, Index k, double max_strain_cost,
       double min_strain_cost,
@@ -699,8 +740,8 @@ class StrucMapper {
   ///
   /// Note:
   std::set<MappingNode> _seed_from_vol_range(
-      SimpleStructure const &child_struc, Index k, Index min_vol, Index max_vol,
-      double max_strain_cost, double min_strain_cost,
+      SimpleStructure const &unmapped_child, Index k, Index min_vol,
+      Index max_vol, double max_strain_cost, double min_strain_cost,
       SymOpVector const &child_factor_group = {SymOp::identity()}) const;
 
   ///\brief returns number of species in a SimpleStructure given the current
@@ -716,13 +757,15 @@ class StrucMapper {
 
   /// \brief Calculate min_vol, max_vol range from min_va_frac, max_va_frac, and
   /// properties of the child and parent structures and calculator.
-  std::pair<Index, Index> _vol_range(const SimpleStructure &child_struc) const;
+  std::pair<Index, Index> _vol_range(
+      const SimpleStructure &unmapped_child) const;
 
   notstd::cloneable_ptr<StrucMapCalculatorInterface> m_calc_ptr;
 
   double m_lattice_weight;
   double m_max_volume_change;
-  int m_options;
+  bool m_robust;
+  bool m_soft_va_limit;
   double m_cost_tol;
   double m_xtal_tol;
   double m_min_va_frac;

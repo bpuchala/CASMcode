@@ -63,16 +63,8 @@ class LatticeMap {
   typedef Eigen::Matrix<double, 3, 3, Eigen::DontAlign> DMatType;
   typedef Eigen::Matrix<int, 3, 3, Eigen::DontAlign> IMatType;
 
-  /// LatticeMap constructor
+  /// \brief LatticeMap constructor
   LatticeMap(Lattice const &_parent, Lattice const &_child, int _range,
-             SymOpVector const &_parent_point_group,
-             SymOpVector const &_child_point_group,
-             double _init_better_than = 1e20,
-             bool _symmetrize_strain_cost = false, double _cost_tol = TOL);
-
-  /// LatticeMap constructor
-  LatticeMap(Eigen::Ref<const DMatType> const &_parent,
-             Eigen::Ref<const DMatType> const &_child, int _range,
              SymOpVector const &_parent_point_group,
              SymOpVector const &_child_point_group,
              double _init_better_than = 1e20,
@@ -81,9 +73,12 @@ class LatticeMap {
   /// Iterate until all possible solutions have been considered
   LatticeMap const &best_strain_mapping() const;
 
-  /// \brief Iterate until the next solution (N, F^{N}) with lattice mapping
-  /// score less than `max_cost` is found.
+  /// \brief Iterate until the next solution \f$(N, F^{N})\f$ with lattice
+  /// mapping score less than `max_cost` is found.
   LatticeMap const &next_mapping_better_than(double max_cost) const;
+
+  /// Returns true if there is a current valid solution
+  operator bool() const { return m_has_current_solution; }
 
   /// The cost of the current solution
   double strain_cost() const { return m_cost; }
@@ -91,21 +86,23 @@ class LatticeMap {
   /// The name of the method used to calculate the lattice deformation cost
   std::string cost_method() const;
 
-  /// This is N for the current solution
+  /// This is \f$N\f$ for the current solution
   const DMatType &matrixN() const { return m_N; }
 
-  /// \brief This is F_reverse^{N} (parent to child deformation) for the
+  /// \brief This is \f$F_{reverse}^{N}\f$ (parent to child deformation) for the
   /// current solution
   ///
+  /// \f[
   ///     F_reverse^{N} * (L1 * T1) * N = L2
+  /// \f]
   const DMatType &deformation_gradient() const {
     return m_deformation_gradient;
   }
 
-  /// This is the parent lattice column matrix (L1 * T1)
+  /// This is the parent lattice column matrix (\f$L_1 * T_1\f$)
   const DMatType &parent_matrix() const { return m_parent; }
 
-  /// This is the child lattice column matrix (L2)
+  /// This is the child lattice column matrix (\f$L_2\f$)
   const DMatType &child_matrix() const { return m_child; }
 
   /// This is the reduced cell of the parent lattice column matrix
@@ -159,6 +156,7 @@ class LatticeMap {
   bool m_symmetrize_strain_cost;
   double m_cost_tol;
 
+  mutable bool m_has_current_solution;
   mutable double m_cost;
   mutable Index m_currmat;
   mutable DMatType m_deformation_gradient, m_N, m_dcache;
@@ -181,8 +179,8 @@ class LatticeMap {
   /// Returns true if current N matrix is the canonical equivalent
   bool _check_canonical() const;
 
-  /// \brief Iterate until the next solution (N, F^{N}) with lattice mapping
-  /// score less than `max_cost` is found.
+  /// \brief Iterate until the next solution \f$(N, F^{N})\f$ with lattice
+  /// mapping score less than `max_cost` is found.
   LatticeMap const &_next_mapping_better_than(double max_cost) const;
 };
 

@@ -151,7 +151,7 @@ Eigen::VectorXd spatial_unroll(const Eigen::Matrix3d &lat_mat,
 /// standard.
 bool standard_orientation_spatial_compare(
     const Eigen::Matrix3d &low_score_lat_mat,
-    Eigen::Matrix3d &high_score_lat_mat, double compare_tol);
+    const Eigen::Matrix3d &high_score_lat_mat, double compare_tol);
 
 /// \brief Determine whether high_score has a more standard format than
 /// low_score

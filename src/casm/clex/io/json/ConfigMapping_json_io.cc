@@ -136,6 +136,12 @@ namespace CASM {
 ///     Constrains the search space by setting a limit on allowed volume change.
 ///     Applies to the `auto_lattice_volume_range` lattice mapping method only.
 ///
+/// soft_va_limit: bool (default=false)
+///     If true, ensures that if no supercell volume satisfies vacancy
+///     constraints, the smallest possible volume is used. Otherwise, the
+///     result will be no valid mapping. Applies to the
+///     `auto_lattice_volume_range` lattice mapping method only.
+///
 ///
 /// Equivalent configuration selection parameters:
 ///
@@ -227,6 +233,7 @@ void parse(InputParser<ConfigMapperSettings> &parser,
   parser.optional(settings.lattice_weight, "lattice_weight");
   parser.optional(settings.cost_tol, "cost_tol");
   parser.optional(settings.robust, "robust");
+  parser.optional(settings.soft_va_limit, "soft_va_limit");
   parser.optional(settings.k_best, "k_best");
   parser.optional(settings.min_lattice_volume, "min_lattice_volume");
   parser.optional(settings.max_lattice_volume, "max_lattice_volume");

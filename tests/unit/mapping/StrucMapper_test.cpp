@@ -116,9 +116,13 @@ class StrucMapperTest : public testing::Test {
   // Potential parent superlattice volume constraint (default: 0.5)
   double max_volume_change;
 
-  // Robust, soft_va_limit options (default: none)
-  //   (bitwise-OR of StrucMapper::Options)
-  xtal::StrucMapper::Options struc_mapper_options;
+  // "Robust" additional checks for degenerate cost mappings (default: false)
+  bool robust;
+
+  // If true, ensures that if no supercell volume
+  // satisfies vacancy constraints, the smallest possible volume is used.
+  // Default behavior results in no valid mapping.  (default: false)
+  bool soft_va_limit;
 
   // Mapping cost comparison tolerance (default: TOL)
   double cost_tol;
@@ -163,7 +167,8 @@ class StrucMapperTest : public testing::Test {
                    allowed_molecule_names(basicstructure)),
         lattice_weight(0.5),
         max_volume_change(0.5),
-        struc_mapper_options(xtal::StrucMapper::Options::none),
+        robust(false),
+        soft_va_limit(false),
         cost_tol(TOL),
         min_va_frac(0.),
         max_va_frac(1.),
@@ -242,7 +247,7 @@ class StrucMapperTest : public testing::Test {
 
 TEST_F(StrucMapperTest, MapDeformedStruc0) {
   xtal::StrucMapper mapper(calculator, lattice_weight, max_volume_change,
-                           struc_mapper_options, cost_tol, min_va_frac,
+                           robust, soft_va_limit, cost_tol, min_va_frac,
                            max_va_frac);
 
   std::set<xtal::MappingNode> mappings = mapper.map_deformed_struc(
@@ -254,7 +259,7 @@ TEST_F(StrucMapperTest, MapDeformedStruc0) {
 
 TEST_F(StrucMapperTest, MapDeformedStrucImposeLatticeVols0) {
   xtal::StrucMapper mapper(calculator, lattice_weight, max_volume_change,
-                           struc_mapper_options, cost_tol, min_va_frac,
+                           robust, soft_va_limit, cost_tol, min_va_frac,
                            max_va_frac);
 
   Index min_vol = 1;
@@ -270,7 +275,7 @@ TEST_F(StrucMapperTest, MapDeformedStrucImposeLatticeVols0) {
 
 TEST_F(StrucMapperTest, MapDeformedStrucImposeLattice0) {
   xtal::StrucMapper mapper(calculator, lattice_weight, max_volume_change,
-                           struc_mapper_options, cost_tol, min_va_frac,
+                           robust, soft_va_limit, cost_tol, min_va_frac,
                            max_va_frac);
 
   // clang-format off
@@ -291,7 +296,7 @@ TEST_F(StrucMapperTest, MapDeformedStrucImposeLattice0) {
 
 TEST_F(StrucMapperTest, MapDeformedStrucImposeLatticeNode0) {
   xtal::StrucMapper mapper(calculator, lattice_weight, max_volume_change,
-                           struc_mapper_options, cost_tol, min_va_frac,
+                           robust, soft_va_limit, cost_tol, min_va_frac,
                            max_va_frac);
 
   // clang-format off
@@ -319,7 +324,7 @@ TEST_F(StrucMapperTest, MapDeformedStrucImposeLatticeNode0) {
 
 TEST_F(StrucMapperTest, MapIdealStruc0) {
   xtal::StrucMapper mapper(calculator, lattice_weight, max_volume_change,
-                           struc_mapper_options, cost_tol, min_va_frac,
+                           robust, soft_va_limit, cost_tol, min_va_frac,
                            max_va_frac);
 
   std::set<xtal::MappingNode> mappings =

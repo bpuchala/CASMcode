@@ -26,7 +26,7 @@ class Configuration;
 class ConfigDoF;
 class SupercellSymInfo;
 
-/// \brief Settings for `ConfigMapper`
+/// \brief Settings for ConfigMapper
 struct ConfigMapperSettings {
   ConfigMapperSettings()
       : lattice_weight(0.5),
@@ -37,12 +37,6 @@ struct ConfigMapperSettings {
         min_va_frac(0.),
         max_va_frac(1.),
         max_volume_change(0.3) {}
-
-  int options() const {
-    int opt = 0;
-    if (robust) opt |= xtal::StrucMapper::robust;
-    return opt;
-  }
 
   // --- Lattice mapping method choices: ---
 
@@ -221,6 +215,14 @@ struct ConfigMapperSettings {
   /// Default: 0.3
   double max_volume_change;
 
+  /// If true, ensures that if no supercell volume satisfies vacancy
+  /// constraints, the smallest possible volume is used. Otherwise, the result
+  /// will be no valid mapping.
+  ///
+  /// Applies to the `auto_lattice_volume_range` lattice mapping method only.
+  /// Default: false
+  bool soft_va_limit = false;
+
   // TODO: specify a particular translation
   // std::optional<Eigen::Vector3d> fix_translation;
 
@@ -254,9 +256,10 @@ enum class ConfigComparison {
   NewScel
 };
 
-/// Data structure storing a structure -> configuration mapping
+/// Data structure storing an individual ConfigMapper solution
 ///
-/// See member comments for definitions
+/// See member comments for definitions. See ConfigMapper for more detailed
+/// context.
 struct ConfigurationMapping {
   ConfigurationMapping(
       xtal::SimpleStructure const &_unmapped_child,
@@ -295,15 +298,16 @@ struct ConfigurationMapping {
         hint_status(_hint_status),
         hint_cost(_hint_cost) {}
 
-  /// Original child structure, without any mapping or modifications
+  /// \brief The original child structure, without any mapping or modifications
   xtal::SimpleStructure unmapped_child;
 
-  /// StrucMapper output, describes mapping from `unmapped_child` structure to
-  /// `mapped_child` structure via a lattice mapping and an atomic assignment
-  /// mapping
+  /// \brief The StrucMapper solution mapping from `unmapped_child` to
+  /// `mapped_child`
   xtal::MappingNode mapping;
 
-  /// Mapped child structure, equivalent to `unmapped_child`, but mapped by
+  /// \brief The mapped child structure
+  ///
+  /// The mapped child structure is equivalent to `unmapped_child` but mapped by
   /// StrucMapper and transformed according to the results stored in
   /// `mapping` to the setting of the `parent` superstructure.
   ///
@@ -315,14 +319,14 @@ struct ConfigurationMapping {
   ///
   ///     mapped_child.mol_info.properties["disp"] =
   ///         // displacements associated with molecules (mol_displacement in
-  ///         //  MappingNode  documentation)
+  ///         //  MappingNode documentation)
   ///
   ///     mapped_child.properties["isometry"] =
   ///         // unrolled 9-element vector from mapping.lattice_node.isometry
   ///
   xtal::SimpleStructure mapped_child;
 
-  /// Configuration, as directly constructed from `mapped_child`
+  /// \brief The configuration directly constructed from `mapped_child`
   ///
   /// Relationships that hold:
   ///
@@ -335,8 +339,8 @@ struct ConfigurationMapping {
   /// `mapped_child.mol_info.properties`.
   Configuration mapped_configuration;
 
-  /// Properties, as determined from mapping, and transformed to match the
-  /// `mapped_child` and `mapped_configuration`
+  /// \brief Properties, as determined from `mapping`, and transformed to match
+  /// the `mapped_child` and `mapped_configuration`
   ///
   /// Includes:
   /// - Global properties from `mapped_child.properties` in
@@ -356,7 +360,10 @@ struct ConfigurationMapping {
   ///
   MappedProperties mapped_properties;
 
-  /// Transformation from mapped configuration and structure to the
+  /// \brief The transformation from the mapped_configuration to
+  /// configuration_in_canon_scel
+  ///
+  /// The transformation from mapped configuration and structure to the
   /// configuration in the canonical supercell and corresponding structure.
   /// An element of the prim factor group. Lattice vectors are related
   /// according to:
@@ -371,13 +378,18 @@ struct ConfigurationMapping {
   /// continuous DoFs:
   ///
   ///     v_in_canon_scel = matrix * v_mapped,
-  ///     for global DoF, matrix is stored as
-  ///         symop_to_canon_scel.representation(
-  ///              global_dof_info.symrep_ID()).MatrixXd()
-  ///     for local DoF, matrix is stored as
-  ///         symop_to_canon_scel.representation(
-  ///              site_dof_info[b].symrep_ID()).MatrixXd(),
-  ///     where `b` is the prim sublattice the site DoF begins on.
+  ///
+  /// For global DoF, matrix is stored as:
+  ///
+  ///     symop_to_canon_scel.representation(
+  ///         global_dof_info.symrep_ID()).MatrixXd()
+  ///
+  /// For local DoF, matrix is stored as:
+  ///
+  ///     symop_to_canon_scel.representation(
+  ///          site_dof_info[b].symrep_ID()).MatrixXd()
+  ///
+  /// where `b` is the prim sublattice the site DoF begins on.
   ///
   /// Occupation values for anisotropic occupants are permuted according to
   /// the permutation representation, stored as:
@@ -385,51 +397,63 @@ struct ConfigurationMapping {
   ///     occ[site_index] = occ_perm_b[occ[site_index]]
   ///     occ_perm_b = symop_to_canon_scel.get_permutation_rep(
   ///         m_occupation.symrep_IDs()[b])).permtuation(),
-  ///     where `occ_perm_b` is the permutation representation for
-  ///     occupants that begin on sublattice b of the prim.
+  ///
+  /// where `occ_perm_b` is the permutation representation for occupants that
+  /// begin on sublattice `b` of the prim.
   ///
   /// Properties, represented in the \link xtal::DoFSet "standard
   /// basis"\endlink, are transformed according to:
   ///
   ///     v_in_canon_scel = matrix * v_mapped,
-  ///     where matrix = AnisoValTraits(type).symop_to_matrix(
-  ///                        symop_to_canon_scel.matrix,
-  ///                        symop_to_canon_scel.translation,
-  ///                        symop_to_canon_scel.time_reversal),
+  ///
+  /// where
+  ///
+  ///     matrix = AnisoValTraits(type).symop_to_matrix(
+  ///                  symop_to_canon_scel.matrix,
+  ///                  symop_to_canon_scel.translation,
+  ///                  symop_to_canon_scel.time_reversal),
   ///
   /// Site mapping is described by `permutation_to_canon_scel`.
   ///
   SymOp symop_to_canon_scel;
 
-  /// Permutation that describes site mapping when mapping the mapped
-  /// configuration into the canonical supercell. The value `j =
-  /// permutation_to_canon_scel[i]` indicates that values on site j in
-  /// `mapped_configuration` are transformed according to the
+  /// \brief The permutation that describes site mapping that occurs for the
+  /// transformation from mapped_configuration configuration_in_canon_scel
+  ///
+  /// The value `j = permutation_to_canon_scel[i]` indicates that values on
+  /// site `j` in `mapped_configuration` are transformed according to the
   /// appropriate symmetry representation for `symop_to_canon_scel`, and then
-  /// mapped to site i in `configuration_in_canon_scel`. The same
-  /// permutation is used to map `mol_info` properties from
-  /// `mapped_properties` to `properties_in_canon_scel`.
+  /// mapped to site `i` in `configuration_in_canon_scel`. The same
+  /// permutation is used to map `mol_info` properties from `mapped_properties`
+  /// to `properties_in_canon_scel`.
   Permutation permutation_to_canon_scel;
 
-  /// The transformation from mapped to canonical supercell lattice vectors is
-  /// made according to:
+  /// \brief The transformation of the supercell lattice vectors going from
+  /// mapped_configuration to configuration_in_canon_scel.
   ///
-  ///     configuration_in_canon_scel.ideal_lattice().lat_column_mat() =
+  /// The transformation of the supercell lattice vectors going from
+  /// mapped_configuration to configuration_in_canon_scel satisfies the
+  /// relation:
+  ///
+  ///     configuration_in_canon_scel.ideal_lattice().lat_column_mat() ==
   ///         symop_to_canon_scel.matrix() *
   ///         mapped_configuration.ideal_lattice().lat_column_mat() *
   ///         transformation_matrix_to_canon_scel
   ///
   Eigen::Matrix3l transformation_matrix_to_canon_scel;
 
-  /// xtal::SimpleStructure after mapping to the canonical supercell
+  /// \brief The structure corresponding configuration_in_canon_scel
   xtal::SimpleStructure structure_in_canon_scel;
 
-  /// Configuration after mapping to the canonical supercell
+  /// \brief The configuration after mapping to the canonical supercell
   Configuration configuration_in_canon_scel;
 
-  /// Properties after mapping to the canonical supercell;
+  /// \brief Properties after mapping to the canonical supercell;
   MappedProperties properties_in_canon_scel;
 
+  /// \brief The transformation from configuration_in_canon_scel to
+  /// final_configuration
+  ///
   /// The transformation from configuration DoF and properties in the
   /// canonical supercell to final configuration DoF and properties is made
   /// according to `symop_to_final` and `permutation_to_final`, using the
@@ -437,46 +461,60 @@ struct ConfigurationMapping {
   /// `permutation_to_canon_scel`.
   SymOp symop_to_final;
 
-  /// Permutation that describes site mapping from
-  /// `configuration_in_canon_scel` to `final_configuration`.
+  /// \brief The permutation that describes site mapping from
+  /// configuration_in_canon_scel to final_configuration.
   ///
   /// Transformed site properties are mapped using:
+  ///
   ///     result.site[property_name].col(i) =
   ///         (transformed) input.site[property_name].col(permutation[i]).
   ///
   Permutation permutation_to_final;
 
-  /// Final structure, symmetrically equivalent to `mapped_child`,
+  /// \brief The structure corresponding to final_configuration
+  ///
+  /// The final_structure is symmetrically equivalent to mapped_child,
   /// but possibly with a different choice of supercell and permutation.
   xtal::SimpleStructure final_structure;
 
-  /// Final configuration, symmetrically equivalent to `mapped_configuration`,
-  /// but possibly with a different choice of supercell and permutation.
+  /// \brief The final configuration
+  ///
+  /// The final_configuration is symmetrically equivalent to
+  /// mapped_configuration, but possibly with a different choice of supercell
+  /// and permutation.
   Configuration final_configuration;
 
-  /// Properties, symmetrically equivalent to `mapped_properties`,
-  /// transformed to match `final_configuration`
+  /// \brief Properties after mapping to the final configuration;
   MappedProperties final_properties;
 
-  /// Degree to which the hinted configuration matches final_configuration
+  /// \brief The degree to which the hinted configuration matches
+  /// final_configuration
   ConfigComparison hint_status;
 
-  /// Structure mapping score for hinted configuration matches
-  /// final_configuration
+  /// \brief The structure mapping score for the hinted configuration
   double hint_cost;
 
-  /// Compare using MappingNode (this->mapping)
+  /// \brief Compares ConfigurationMapping using MappingNode (this->mapping)
   bool operator<(ConfigurationMapping const &other) const {
     return this->mapping < other.mapping;
   }
 };
 
-/// Data structure holding results of ConfigMapper algorithm
+/// Data structure holding results of the ConfigMapper algorithm
+///
+/// Consists of:
+/// - std::set<ConfigurationMapping> maps: The set of structure-
+///   to-configuration mapping solutions found by ConfigMapper. See
+///   ConfigurationMapping for details.
+/// - std::string fail_msg: Failure message if ConfigMapper could not map input
+///   structure to the prim.
 struct ConfigMapperResult {
   ConfigMapperResult() {}
 
+  /// Returns true if 1 or more solutions was found
   bool success() const { return !maps.empty(); }
 
+  /// The number of solutions with score equal to the best scoring solution
   Index n_optimal(double tol = TOL) const;
 
   /// The set of mapping solutions from input structure to configuration
