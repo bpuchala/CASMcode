@@ -274,6 +274,7 @@ struct ConfigurationMapping {
       Configuration const &_configuration_in_canon_scel,
       MappedProperties const &_properties_in_canon_scel,
       SymOp const &_symop_to_final, Permutation const &_permutation_to_final,
+      Eigen::Matrix3l const &_transformation_matrix_to_final,
       xtal::SimpleStructure const &_final_structure,
       Configuration const &_final_configuration,
       MappedProperties const &_final_properties, ConfigComparison _hint_status,
@@ -292,6 +293,7 @@ struct ConfigurationMapping {
         properties_in_canon_scel(_properties_in_canon_scel),
         symop_to_final(_symop_to_final),
         permutation_to_final(_permutation_to_final),
+        transformation_matrix_to_final(_transformation_matrix_to_final),
         final_structure(_final_structure),
         final_configuration(_final_configuration),
         final_properties(_final_properties),
@@ -464,12 +466,31 @@ struct ConfigurationMapping {
   /// \brief The permutation that describes site mapping from
   /// configuration_in_canon_scel to final_configuration.
   ///
-  /// Transformed site properties are mapped using:
+  /// Note:
+  /// - This is a different type of permutation than
+  /// `permutation_to_canon_scel` because it acts on ConfigDoF instead of
+  /// SimpleStructure coordinates and properties
+  ///
+  /// After being transformed, site properties are mapped using:
   ///
   ///     result.site[property_name].col(i) =
   ///         (transformed) input.site[property_name].col(permutation[i]).
   ///
   Permutation permutation_to_final;
+
+  /// \brief The transformation of the supercell lattice vectors going from
+  /// configuration_in_canon_scel to final_configuration.
+  ///
+  /// While the supercell of final_configuration is still the canonical
+  /// supercell, to satisfy the following relationship a non-identity
+  /// transformation matrix may be necessary:
+  ///
+  ///     final_configuration.ideal_lattice().lat_column_mat() ==
+  ///         symop_to_final.matrix() *
+  ///         configuration_in_canon_scel.ideal_lattice().lat_column_mat() *
+  ///         transformation_matrix_to_final
+  ///
+  Eigen::Matrix3l transformation_matrix_to_final;
 
   /// \brief The structure corresponding to final_configuration
   ///

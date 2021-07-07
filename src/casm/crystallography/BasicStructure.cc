@@ -546,7 +546,7 @@ DoFKey get_strain_dof_key(xtal::BasicStructure const &structure) {
   return global_dof_types[istrain];
 }
 
-DoFKey get_strain_metric(DoFKey strain_dof_key) {
+std::string get_strain_metric(DoFKey strain_dof_key) {
   auto pos = strain_dof_key.find("strain");
   if (pos != std::string::npos) {
     return strain_dof_key.substr(0, pos);

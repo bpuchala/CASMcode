@@ -7,6 +7,7 @@
 #include "casm/casm_io/FileData.hh"
 #include "casm/casm_io/enum/io_traits.hh"
 #include "casm/casm_io/enum/stream_io.hh"
+#include "casm/crystallography/DoFDecl.hh"
 #include "casm/global/eigen.hh"
 
 namespace CASM {
@@ -125,6 +126,10 @@ struct MappedProperties {
   /// 'origin'
   FileData file_data;
 };
+
+bool has_strain_property(MappedProperties const &properties);
+
+DoFKey get_strain_property_key(MappedProperties const &properties);
 
 jsonParser &to_json(const MappedProperties &prop, jsonParser &json);
 

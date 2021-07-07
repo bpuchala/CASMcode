@@ -336,6 +336,8 @@ jsonParser &to_json(ConfigurationMapping const &mapping, jsonParser &json,
   to_json(mapping.symop_to_final, json["symop_to_final"]);
   to_json(mapping.permutation_to_final.perm_array(),
           json["permutation_to_final"]);
+  json["transformation_matrix_to_final"] =
+      mapping.transformation_matrix_to_final;
   to_json(mapping.final_structure, json["final"]["structure"], {},
           coordinate_mode);
   json["final"]["configuration"] = mapping.final_configuration;

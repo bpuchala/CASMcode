@@ -38,7 +38,7 @@ std::vector<Index> superstructure_basis_idx(
     Eigen::Ref<const Eigen::Matrix3i> const &_T,
     SimpleStructure const &_sstruc);
 
-/// \brief Construct from decorated structure
+/// \brief Construct a SimpleStructure from a BasicStructure
 SimpleStructure make_simple_structure(BasicStructure const &_struc);
 
 /// \brief Determine which sites of a BasicStructure can host each atom of a

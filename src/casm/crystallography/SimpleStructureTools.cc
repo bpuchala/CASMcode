@@ -96,6 +96,13 @@ std::vector<Index> superstructure_basis_idx(
 
 //***************************************************************************
 
+/// \brief Construct a SimpleStructure from a BasicStructure
+///
+/// \returns A SimpleStructure with the lattice and basis of the input
+/// BasicStructure. The results contains both the atomized (atom_info) and
+/// molecular representation (mol_info) of a structure whose occupants are the
+/// default occupants of the input BasicStructure. The result has no global,
+/// atom_info, or mol_info properties.
 SimpleStructure make_simple_structure(BasicStructure const &_struc) {
   SimpleStructure result;
   result.lat_column_mat = _struc.lattice().lat_column_mat();

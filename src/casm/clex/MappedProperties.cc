@@ -48,6 +48,26 @@ double &MappedProperties::scalar(std::string const &_name) {
   assert((it->second).rows() == 1 && (it->second).cols() == 1);
   return (it->second)(0, 0);
 }
+
+bool has_strain_property(MappedProperties const &properties) {
+  for (auto const &pair : properties.global) {
+    if (pair.first.find("strain") != std::string::npos) {
+      return true;
+    }
+  }
+  return false;
+}
+
+DoFKey get_strain_property_key(MappedProperties const &properties) {
+  for (auto const &pair : properties.global) {
+    if (pair.first.find("strain") != std::string::npos) {
+      return pair.first;
+    }
+  }
+  throw std::runtime_error(
+      "Error in get_strain_property_key: No strain property.");
+}
+
 jsonParser &to_json(const MappedProperties &obj, jsonParser &json) {
   json.put_obj();
   json["origin"] = obj.origin;

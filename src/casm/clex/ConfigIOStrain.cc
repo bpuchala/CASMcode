@@ -55,7 +55,7 @@ bool RelaxationStrain::init(const Configuration &_tmplt) const {
 //****************************************************************************************
 
 bool RelaxationStrain::validate(const Configuration &_config) const {
-  return _config.calc_properties(m_calctype).global.count("Ustrain");
+  return has_strain_property(_config.calc_properties(m_calctype));
 }
 
 //****************************************************************************************
@@ -82,8 +82,12 @@ std::string RelaxationStrain::short_header(const Configuration &_tmplt) const {
 
 //****************************************************************************************
 Eigen::VectorXd RelaxationStrain::evaluate(const Configuration &_config) const {
-  return m_straincalc.unrolled_strain_metric(m_straincalc.rollup_E(
-      _config.calc_properties(m_calctype).global.at("Ustrain")));
+  MappedProperties const &properties = _config.calc_properties(m_calctype);
+  DoFKey strain_key = get_strain_property_key(properties);
+  Eigen::VectorXd unrolled_metric = properties.global.at(strain_key);
+  StrainConverter c(xtal::get_strain_metric(strain_key));
+  Eigen::Matrix3d F = c.unrolled_strain_metric_to_F(unrolled_metric);
+  return m_straincalc.unrolled_strain_metric(F);
 }
 
 //****************************************************************************************

@@ -682,11 +682,8 @@ xtal::SimpleStructure make_mapped_structure(
   throw std::runtime_error("TODO: make_mapped_structure");
 }
 
-/// \brief Copy child properties that are Prim DoF to create a Configuration
+/// \brief Copy child properties that are prim DoF to create a Configuration
 ///
-/// \param mapping_node Structure mapping information. The supercell of the
-///     resulting configuration has lattice vectors equal to those of
-///     `mapping_node.lattice_node.parent.superlattice()`.
 /// \param mapped_child Child structure, already transformed so that it is
 ///     mapped to the parent superstructure. This means that
 ///     `mapped_child.mol_info.names[i]` specifies the molecule at site index i
@@ -695,14 +692,17 @@ xtal::SimpleStructure make_mapped_structure(
 ///     construct DoF values from `mapped_child.properties` and
 ///     `mapped_child.mol_info.properties` without any further transformation.
 /// \param shared_prim Shared prim structure that the child was mapped to.
+/// \param parent_superlattice The lattice of the
+///     resulting configuration has lattice vectors equal to those of
+///     parent_superlattice. (Use `mapping.lattice_node.parent.superlattice()`).
 ///
 Configuration make_mapped_configuration(
-    xtal::MappingNode const &mapping_node, SimpleStructure const &mapped_child,
-    std::shared_ptr<Structure const> const &shared_prim) {
+    xtal::SimpleStructure const &mapped_child,
+    std::shared_ptr<Structure const> const &shared_prim,
+    xtal::Lattice const &parent_superlattice) {
   auto const &prim = *shared_prim;
   std::shared_ptr<Supercell const> mapped_shared_supercell =
-      std::make_shared<Supercell const>(
-          shared_prim, mapping_node.lattice_node.parent.superlattice());
+      std::make_shared<Supercell const>(shared_prim, parent_superlattice);
   SimpleStructure::Info const &child_mol_info = mapped_child.mol_info;
 
   ConfigDoF configdof =
@@ -865,12 +865,34 @@ ConfigMapperResult ConfigMapper::import_structure(
     xtal::SimpleStructure const &unmapped_child = child_struc;
 
     // 1) construct mapped_child, mapped_configuration, mapped_properties ---
+
+    // TODO: make resolve_setting a standalone function
     // xtal::SimpleStructure mapped_child =
     //     make_mapped_structure(mapping_node, unmapped_child, shared_prim());
     xtal::SimpleStructure mapped_child =
         struc_mapper().calculator().resolve_setting(mapping_node,
                                                     unmapped_child);
-    // TODO: ^ use standalone make_mapped_structure
+
+    // if strain DoF, convert Ustrain to prim strain metric
+    if (xtal::has_strain_dof(*shared_prim())) {
+      if (!mapped_child.properties.count("Ustrain")) {
+        std::stringstream msg;
+        msg << "Error in ConfigMapper: mapped SimpleStructure does not have "
+               "Ustrain.";
+        throw std::runtime_error(msg.str());
+      }
+
+      // read Ustrain (unrolled), then erase it
+      Eigen::MatrixXd Ustrain_unrolled = mapped_child.properties.at("Ustrain");
+      mapped_child.properties.erase("Ustrain");
+      StrainConverter c("U");
+
+      // convert to prim DoF metric (unrolled)
+      Eigen::Matrix3d F = c.unrolled_strain_metric_to_F(Ustrain_unrolled);
+      DoFKey strain_key = xtal::get_strain_dof_key(*shared_prim());
+      c.set_mode(xtal::get_strain_metric(strain_key));
+      mapped_child.properties.emplace(strain_key, c.unrolled_strain_metric(F));
+    }
 
     mapped_child.properties["lattice_deformation_cost"] =
         _scalar_as_matrix(mapping_node.lattice_node.cost);
@@ -880,8 +902,9 @@ ConfigMapperResult ConfigMapper::import_structure(
         _scalar_as_matrix(mapping_node.cost);
     // TODO: move this ^ to `make_mapped_structure`
 
-    Configuration mapped_configuration =
-        make_mapped_configuration(mapping_node, mapped_child, shared_prim());
+    Configuration mapped_configuration = make_mapped_configuration(
+        mapped_child, shared_prim(),
+        mapping_node.lattice_node.parent.superlattice());
     MappedProperties mapped_properties =
         make_mapped_properties(mapped_child, *shared_prim());
 
@@ -901,8 +924,7 @@ ConfigMapperResult ConfigMapper::import_structure(
     MappedProperties properties_in_canon_scel{sym::copy_apply(
         symop_to_canon_scel, perm_to_canon_scel, mapped_properties)};
     xtal::SimpleStructure structure_in_canon_scel = make_simple_structure(
-        mapped_configuration.supercell(), mapped_configuration.configdof(),
-        properties_in_canon_scel);
+        configuration_in_canon_scel, properties_in_canon_scel);
 
     // L_canon_scel = (g * L_mapped) * T
     Eigen::Matrix3d g = symop_to_canon_scel.matrix();
@@ -928,6 +950,8 @@ ConfigMapperResult ConfigMapper::import_structure(
     }
     SymOp symop_to_final = perm_it.sym_op();
     Permutation perm_to_final = perm_it.combined_permute();
+    Eigen::Matrix3l transformation_matrix_to_final = lround(
+        (symop_to_final.matrix() * L_canon_scel).inverse() * L_canon_scel);
 
     // 2c: construct the `final_configuration`, `final_properties` and
     // `final_structure`
@@ -937,9 +961,8 @@ ConfigMapperResult ConfigMapper::import_structure(
     MappedProperties final_properties =
         sym::copy_apply(perm_it, properties_in_canon_scel);
 
-    xtal::SimpleStructure final_structure = make_simple_structure(
-        final_configuration.supercell(), final_configuration.configdof(),
-        final_properties);
+    xtal::SimpleStructure final_structure =
+        make_simple_structure(final_configuration, final_properties);
 
     // 2e: check relationship between final_configuration and hint
     ConfigComparison hint_status =
@@ -951,8 +974,8 @@ ConfigMapperResult ConfigMapper::import_structure(
         mapped_properties, symop_to_canon_scel, perm_to_canon_scel,
         transformation_matrix_to_canon_scel, structure_in_canon_scel,
         configuration_in_canon_scel, properties_in_canon_scel, symop_to_final,
-        perm_to_final, final_structure, final_configuration, final_properties,
-        hint_status, hint_cost);
+        perm_to_final, transformation_matrix_to_final, final_structure,
+        final_configuration, final_properties, hint_status, hint_cost);
   }
 
   return result;
